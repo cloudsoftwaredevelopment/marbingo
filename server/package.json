@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node --test test/",
+    "test": "node --test",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
