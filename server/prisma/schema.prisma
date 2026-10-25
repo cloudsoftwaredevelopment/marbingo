@@ -19,6 +19,12 @@ enum Channel {
   field
 }
 
+enum OrderStatus {
+  pending
+  delivered
+  cancelled
+}
+
 enum MoveReason {
   initial
   sale
@@ -27,23 +33,26 @@ enum MoveReason {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  firstName    String    @map("first_name")
-  lastName     String    @map("last_name")
-  email        String    @unique
+  id           Int         @id @default(autoincrement())
+  firstName    String      @map("first_name")
+  lastName     String      @map("last_name")
+  email        String      @unique
   mobile       String?
   address      String?
-  photoUrl     String?   @map("photo_url")
+  photoUrl     String?     @map("photo_url")
   role         Role
-  employeeId   String    @unique @map("employee_id")
-  passwordHash String    @map("password_hash")
-  active       Boolean   @default(true)
+  employeeId   String      @unique @map("employee_id")
+  passwordHash String      @map("password_hash")
+  active       Boolean     @default(true)
   /// Bumped on password change / deactivation to revoke existing tokens.
-  tokenVersion Int       @default(0) @map("token_version")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  tokenVersion Int         @default(0) @map("token_version")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
   itemsCreated Item[]
   sales        Sale[]
   stockMoves   StockMove[]
+  customers    Customer[]  @relation("CustomerCreatedBy")
+  orders       Order[]     @relation("OrderAgent")
+  delivered    Order[]     @relation("OrderDeliveredBy")
 
   @@map("users")
 }
@@ -58,36 +67,42 @@ model Category {
 
 /// Money fields are integer centavos.
 model Item {
-  id           Int         @id @default(autoincrement())
-  name         String
-  description  String?
-  categoryId   Int?        @map("category_id")
-  category     Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sku          String?     @unique
-  unit         String      @default("pc")
-  qtyOnHand    Int         @default(0) @map("qty_on_hand")
-  reorderLevel Int         @default(0) @map("reorder_level")
-  costPrice    Int?        @map("cost_price")
-  sellingPrice Int         @map("selling_price")
-  imageUrl     String?     @map("image_url")
-  createdById  Int?        @map("created_by")
-  createdBy    User?       @relation(fields: [createdById], references: [id])
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
-  saleLines    SaleLine[]
-  stockMoves   StockMove[]
+  id             Int         @id @default(autoincrement())
+  name           String
+  description    String?
+  categoryId     Int?        @map("category_id")
+  category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sku            String?     @unique
+  unit           String      @default("pc")
+  qtyOnHand      Int         @default(0) @map("qty_on_hand")
+  reorderLevel   Int         @default(0) @map("reorder_level")
+  costPrice      Int?        @map("cost_price")
+  sellingPrice   Int         @map("selling_price")
+  /// Price for field orders to stores; falls back to sellingPrice when null.
+  wholesalePrice Int?        @map("wholesale_price")
+  imageUrl       String?     @map("image_url")
+  createdById    Int?        @map("created_by")
+  createdBy      User?       @relation(fields: [createdById], references: [id])
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  saleLines      SaleLine[]
+  stockMoves     StockMove[]
+  orderLines     OrderLine[]
 
   @@map("items")
 }
 
 model Sale {
-  id        Int        @id @default(autoincrement())
-  soldAt    DateTime   @default(now()) @map("sold_at") @db.Timestamptz
-  cashierId Int        @map("cashier_id")
-  cashier   User       @relation(fields: [cashierId], references: [id])
-  channel   Channel    @default(counter)
-  total     Int
-  lines     SaleLine[]
+  id         Int        @id @default(autoincrement())
+  soldAt     DateTime   @default(now()) @map("sold_at") @db.Timestamptz
+  cashierId  Int        @map("cashier_id")
+  cashier    User       @relation(fields: [cashierId], references: [id])
+  channel    Channel    @default(counter)
+  total      Int
+  lines      SaleLine[]
+  customerId Int?       @map("customer_id")
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  order      Order?
 
   @@index([soldAt])
   @@map("sales")
@@ -126,4 +141,66 @@ model Setting {
   value String
 
   @@map("settings")
+}
+
+/// A store the field agents sell to. client_uuid is set by the device for offline creation.
+model Customer {
+  id          Int      @id @default(autoincrement())
+  clientUuid  String   @unique @default(uuid()) @map("client_uuid")
+  name        String
+  ownerName   String?  @map("owner_name")
+  phone       String?
+  address     String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdById Int?     @map("created_by")
+  createdBy   User?    @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  orders      Order[]
+  sales       Sale[]
+
+  @@index([updatedAt])
+  @@map("customers")
+}
+
+/// Field order taken by an agent; becomes a Sale (and moves stock) only when delivered.
+model Order {
+  id              Int         @id @default(autoincrement())
+  clientUuid      String      @unique @map("client_uuid")
+  customerId      Int         @map("customer_id")
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  agentId         Int         @map("agent_id")
+  agent           User        @relation("OrderAgent", fields: [agentId], references: [id])
+  status          OrderStatus @default(pending)
+  orderedAt       DateTime    @map("ordered_at") @db.Timestamptz
+  syncedAt        DateTime    @default(now()) @map("synced_at") @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  deliveredAt     DateTime?   @map("delivered_at") @db.Timestamptz
+  deliveredById   Int?        @map("delivered_by")
+  deliveredBy     User?       @relation("OrderDeliveredBy", fields: [deliveredById], references: [id])
+  cancelledReason String?     @map("cancelled_reason")
+  notes           String?
+  total           Int
+  saleId          Int?        @unique @map("sale_id")
+  sale            Sale?       @relation(fields: [saleId], references: [id])
+  lines           OrderLine[]
+
+  @@index([status, orderedAt])
+  @@index([agentId, updatedAt])
+  @@map("orders")
+}
+
+model OrderLine {
+  id           Int   @id @default(autoincrement())
+  orderId      Int   @map("order_id")
+  order        Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId       Int   @map("item_id")
+  item         Item  @relation(fields: [itemId], references: [id])
+  qty          Int
+  unitPrice    Int   @map("unit_price")
+  lineTotal    Int   @map("line_total")
+  deliveredQty Int?  @map("delivered_qty")
+
+  @@map("order_lines")
 }
