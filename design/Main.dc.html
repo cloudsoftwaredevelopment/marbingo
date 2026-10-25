@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales report</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1E5B43}a:hover{color:#123D2C}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F4F2EC; color: #1C1B18; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-wrap: wrap;">
+  <div style="flex: 1 1 280px; background: #1C1B18; display: flex; flex-direction: column;">
+    <dc-import name="Sidebar" active="sales" hint-size="100%,1100px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 24px;">
+
+    <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5E5A52;">Reports</p>
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 40px; line-height: 1.05; letter-spacing: -0.01em;">Sales report</h1>
+      </div>
+      <p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; color: #5E5A52;">{{range}}</p>
+    </header>
+
+    <section aria-label="Date filter" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; padding: 12px; background: #FFFEFB; border: 1px solid #DDD8CC; border-radius: 14px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+          <button type="button" aria-pressed="{{t.pressed}}" onClick="{{t.pick}}" style="min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid {{t.border}}; background: {{t.bg}}; color: {{t.fg}}; font: 600 14px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer;">{{t.label}}</button>
+        </sc-for>
+      </div>
+      <sc-if value="{{isCustom}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-left: auto;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="from" style="font-size: 12px; font-weight: 600; color: #5E5A52;">From</label>
+            <input id="from" type="date" value="{{from}}" onChange="{{onFrom}}" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 500 14px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="to" style="font-size: 12px; font-weight: 600; color: #5E5A52;">To</label>
+            <input id="to" type="date" value="{{to}}" onChange="{{onTo}}" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 500 14px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <section aria-label="Totals" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 16px;">
+      <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+        <div style="background: #FFFEFB; border: 1px solid #DDD8CC; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+          <span style="font-size: 13px; font-weight: 600; color: #5E5A52;">{{k.label}}</span>
+          <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 32px; line-height: 1; letter-spacing: -0.01em;">{{k.value}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <section aria-labelledby="chart-h" style="background: #FFFEFB; border: 1px solid #DDD8CC; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;">
+        <h2 id="chart-h" style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 20px;">Sales over time</h2>
+        <span style="font-size: 13px; color: #5E5A52;">{{unit}}</span>
+      </div>
+      <div style="overflow-x: auto;">
+        <div style="height: 270px; min-width: 420px; display: flex; align-items: flex-end; gap: 12px; border-bottom: 1px solid #DDD8CC; padding-bottom: 0;">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="5">
+            <div title="{{b.title}}" style="flex: 1 1 0; min-width: 36px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px;">
+              <span style="font: 500 12px 'IBM Plex Mono', ui-monospace, monospace; color: #5E5A52; white-space: nowrap;">{{b.value}}</span>
+              <div style="width: 100%; max-width: 64px; height: {{b.h}}; background: {{b.bg}}; border: {{b.border}}; border-bottom: 0; border-radius: 6px 6px 0 0; box-sizing: border-box;"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="min-width: 420px; display: flex; gap: 12px; padding-top: 10px;">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="5">
+            <span style="flex: 1 1 0; min-width: 36px; text-align: center; font-size: 12px; color: #5E5A52; white-space: nowrap;">{{b.label}}</span>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="items-h" style="background: #FFFEFB; border: 1px solid #DDD8CC; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;">
+        <h2 id="items-h" style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 20px;">Sales by item</h2>
+        <span style="font-size: 13px; color: #5E5A52;">Sorted by revenue</span>
+      </div>
+      <div style="overflow-x: auto;">
+        <div style="min-width: 640px; display: flex; flex-direction: column;">
+          <div style="display: grid; grid-template-columns: 40px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr); gap: 16px; padding: 0 0 10px; border-bottom: 1px solid #DDD8CC; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5E5A52;">
+            <span>#</span><span>Item</span><span style="text-align: right;">Units sold</span><span style="text-align: right;">Revenue</span><span>Share of sales</span>
+          </div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+            <div style="display: grid; grid-template-columns: 40px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr); gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid #ECE8DF;">
+              <span style="font: 500 13px 'IBM Plex Mono', ui-monospace, monospace; color: #5E5A52;">{{r.rank}}</span>
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                <span style="font-size: 15px; font-weight: 500;">{{r.name}}</span>
+                <span style="font-size: 12px; color: #5E5A52;">{{r.cat}}</span>
+              </div>
+              <span style="text-align: right; font: 500 14px 'IBM Plex Mono', ui-monospace, monospace;">{{r.units}}</span>
+              <span style="text-align: right; font: 500 14px 'IBM Plex Mono', ui-monospace, monospace;">{{r.rev}}</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div aria-hidden="true" style="flex: 1 1 auto; height: 8px; background: #ECE8DF; border-radius: 4px; overflow: hidden;">
+                  <div style="width: {{r.barW}}; height: 100%; background: #1E5B43; border-radius: 4px;"></div>
+                </div>
+                <span style="width: 48px; text-align: right; font: 500 13px 'IBM Plex Mono', ui-monospace, monospace; color: #5E5A52;">{{r.share}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1560}}'>
+var ITEMS = [
+  { name: 'Jasmine rice, 1 kg', cat: 'Rice & grains', base: 90, price: 62 },
+  { name: 'White sugar, 1 kg', cat: 'Baking', base: 55, price: 85 },
+  { name: 'Cooking oil, 1 L', cat: 'Oil & condiments', base: 40, price: 110 },
+  { name: 'Sardines in tomato sauce, 155 g', cat: 'Canned goods', base: 120, price: 26 },
+  { name: 'Pancit canton, 60 g', cat: 'Noodles', base: 150, price: 16 },
+  { name: '3-in-1 coffee, 10 sachets', cat: 'Beverages', base: 60, price: 72 },
+  { name: 'Iodized salt, 500 g', cat: 'Oil & condiments', base: 35, price: 22 },
+  { name: 'Corned beef, 150 g', cat: 'Canned goods', base: 30, price: 48 },
+  { name: 'Evaporated milk, 370 ml', cat: 'Canned goods', base: 45, price: 38 },
+  { name: 'Soy sauce, 1 L', cat: 'Oil & condiments', base: 25, price: 55 },
+  { name: 'All-purpose flour, 1 kg', cat: 'Baking', base: 20, price: 58 },
+  { name: 'Mung beans, 500 g', cat: 'Rice & grains', base: 18, price: 60 }
+];
+var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var TABS = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This week' },
+  { id: 'month', label: 'This month' },
+  { id: 'last', label: 'Last month' },
+  { id: 'custom', label: 'Custom' }
+];
+function peso(n) { return '₱' + Math.round(n).toLocaleString('en-PH'); }
+function num(n) { return Math.round(n).toLocaleString('en-PH'); }
+function compact(n) {
+  if (n >= 1e6) return '₱' + (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return '₱' + (n / 1e3).toFixed(1) + 'k';
+  return '₱' + Math.round(n);
+}
+function parseDate(s) {
+  var p = String(s || '').split('-');
+  if (p.length !== 3) return null;
+  var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  return isNaN(d.getTime()) ? null : d;
+}
+function md(d) { return MON[d.getMonth()] + ' ' + d.getDate(); }
+function mk(list, upcomingFrom) {
+  return list.map(function (b, i) { return { label: b[0], w: b[1], upcoming: upcomingFrom != null && i >= upcomingFrom }; });
+}
+function period(id, from, to) {
+  if (id === 'today') {
+    var hrs = ['7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p'];
+    var hw = [2,4,6,7,8,9,7,6,7,8,6,3];
+    return { seed: 1, factor: 1, range: 'Mon, Oct 26, 2026', unit: 'By hour', buckets: mk(hrs.map(function (h, i) { return [h, hw[i]]; })) };
+  }
+  if (id === 'week') {
+    return { seed: 2, factor: 1, range: 'Oct 26 – Nov 1, 2026', unit: 'By day · dashed = days still ahead',
+      buckets: mk([['Mon',1],['Tue',0],['Wed',0],['Thu',0],['Fri',0],['Sat',0],['Sun',0]], 1) };
+  }
+  if (id === 'month') {
+    return { seed: 3, factor: 26, range: 'Oct 1 – 31, 2026', unit: 'By week · dashed = days still ahead',
+      buckets: mk([['Oct 1–7',7.2],['Oct 8–14',6.6],['Oct 15–21',7.4],['Oct 22–28',4.8],['Oct 29–31',0]], 4) };
+  }
+  if (id === 'last') {
+    return { seed: 4, factor: 29, range: 'Sep 1 – 30, 2026', unit: 'By week',
+      buckets: mk([['Sep 1–7',6.8],['Sep 8–14',7.1],['Sep 15–21',6.9],['Sep 22–28',7.3],['Sep 29–30',1.9]]) };
+  }
+  var a = parseDate(from), b = parseDate(to);
+  if (!a || !b || b < a) return { seed: 5, factor: 0, range: 'Choose a start date before the end date', unit: 'By week', buckets: [] };
+  var days = Math.min(366, Math.round((b - a) / 86400000) + 1);
+  var mult = [1, 0.95, 1.05, 0.98, 1.03];
+  var out = [];
+  for (var s = 0; s < days; s += 7) {
+    var len = Math.min(7, days - s);
+    var st = new Date(a.getFullYear(), a.getMonth(), a.getDate() + s);
+    var en = new Date(a.getFullYear(), a.getMonth(), a.getDate() + s + len - 1);
+    var lab = len === 1 ? md(st) : md(st) + '–' + (st.getMonth() === en.getMonth() ? en.getDate() : md(en));
+    out.push([lab, len * mult[out.length % 5]]);
+  }
+  return { seed: 5, factor: days, range: md(a) + ', ' + a.getFullYear() + ' – ' + md(b) + ', ' + b.getFullYear(), unit: 'By week', buckets: mk(out) };
+}
+
+class Component extends DCLogic {
+  state = { filter: 'month', from: '2026-09-15', to: '2026-10-15' };
+
+  renderVals() {
+    var self = this;
+    var f = this.state.filter;
+    var p = period(f, this.state.from, this.state.to);
+
+    var rows = ITEMS.map(function (it, i) {
+      var v = 1 + 0.12 * Math.sin(i * 3.1 + p.seed * 1.7);
+      var u = Math.round(it.base * p.factor * v);
+      return { name: it.name, cat: it.cat, units: u, rev: u * it.price };
+    });
+    rows.sort(function (x, y) { return y.rev - x.rev; });
+    var gross = 0, units = 0;
+    rows.forEach(function (r) { gross += r.rev; units += r.units; });
+    var tx = gross > 0 ? Math.max(1, Math.round(gross / 412)) : 0;
+    var maxRev = rows.length ? rows[0].rev : 0;
+
+    var wsum = 0;
+    p.buckets.forEach(function (b) { wsum += b.w; });
+    var vals = p.buckets.map(function (b) { return wsum ? gross * b.w / wsum : 0; });
+    var vmax = Math.max.apply(null, vals.concat([1]));
+
+    return {
+      range: p.range,
+      unit: p.unit,
+      isCustom: f === 'custom',
+      from: this.state.from,
+      to: this.state.to,
+      onFrom: function (e) { self.setState({ from: e.target.value }); },
+      onTo: function (e) { self.setState({ to: e.target.value }); },
+      tabs: TABS.map(function (t) {
+        var on = t.id === f;
+        return {
+          label: t.label,
+          pressed: on ? 'true' : 'false',
+          bg: on ? '#1E5B43' : '#FFFEFB',
+          fg: on ? '#FFFFFF' : '#1C1B18',
+          border: on ? '#1E5B43' : '#CFC9BB',
+          pick: function () { self.setState({ filter: t.id }); }
+        };
+      }),
+      kpis: [
+        { label: 'Gross sales', value: peso(gross) },
+        { label: 'Transactions', value: num(tx) },
+        { label: 'Units sold', value: num(units) },
+        { label: 'Average sale', value: tx ? peso(gross / tx) : peso(0) }
+      ],
+      bars: p.buckets.map(function (b, i) {
+        var up = b.upcoming;
+        return {
+          label: b.label,
+          value: up ? '—' : compact(vals[i]),
+          h: up ? '28px' : Math.max(4, Math.round(vals[i] / vmax * 200)) + 'px',
+          bg: up ? 'transparent' : '#1E5B43',
+          border: up ? '1.5px dashed #A39C8C' : '0',
+          title: up ? b.label + ': not yet' : b.label + ': ' + peso(vals[i])
+        };
+      }),
+      rows: rows.map(function (r, i) {
+        var share = gross ? r.rev / gross * 100 : 0;
+        return {
+          rank: i + 1,
+          name: r.name,
+          cat: r.cat,
+          units: num(r.units),
+          rev: peso(r.rev),
+          share: share.toFixed(1) + '%',
+          barW: (maxRev ? r.rev / maxRev * 100 : 0).toFixed(1) + '%'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

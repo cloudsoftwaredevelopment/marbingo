@@ -1,0 +1,36 @@
+/* Design tokens — HANDOFF §7 */
+:root {
+  --ground: #F4F2EC;
+  --surface: #FFFEFB;
+  --ink: #1C1B18;
+  --muted: #5E5A52;
+  --line: #DDD8CC;
+  --line-soft: #ECE8DF;
+  --input-border: #CFC9BB;
+  --accent: #1E5B43;
+  --accent-dark: #123D2C;
+  --accent-tint: #E3EEE7;
+  --accent-tint-border: #B9D6C5;
+  --placeholder: #ECE8DF;
+  --placeholder-ink: #8A8478;
+  --dashed: #A39C8C;
+  --sb-panel: #2A2925;
+  --sb-line: #3A3833;
+  --sb-muted: #A9A497;
+  --sb-muted-2: #D9D5CB;
+  --sb-accent: #7BC3A0;
+  --warn: #8A4209;
+  --warn-bg: #F7E7D6;
+  --danger: #A12A1E;
+  --danger-strong: #8E2A20;
+  --danger-bg: #F2DEDC;
+
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --r-pill: 999px;
+  --ctl-h: 44px;
+}

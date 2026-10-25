@@ -1,0 +1,26 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import RequireAuth from './components/RequireAuth';
+import Layout from './components/Layout';
+import Login from './pages/Login';
+import SalesReport from './pages/SalesReport';
+import AddItem from './pages/AddItem';
+import Profile from './pages/Profile';
+import Pos from './pages/Pos';
+import Admin from './pages/Admin';
+
+// Layout renders <Outlet/> inside the shell with the sidebar.
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route index element={<RequireAuth cap="reports"><SalesReport /></RequireAuth>} />
+        <Route path="items/new" element={<RequireAuth cap="items"><AddItem /></RequireAuth>} />
+        <Route path="pos" element={<RequireAuth cap="pos"><Pos /></RequireAuth>} />
+        <Route path="admin" element={<RequireAuth cap="admin"><Admin /></RequireAuth>} />
+        <Route path="profile" element={<Profile />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

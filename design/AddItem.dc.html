@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Add item</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1E5B43}a:hover{color:#123D2C}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F4F2EC; color: #1C1B18; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-wrap: wrap;">
+  <div style="flex: 1 1 280px; background: #1C1B18; display: flex; flex-direction: column;">
+    <dc-import name="Sidebar" active="add" hint-size="100%,1100px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 24px;">
+
+    <header style="display: flex; flex-direction: column; gap: 6px;">
+      <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5E5A52;">Inventory</p>
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 40px; line-height: 1.05; letter-spacing: -0.01em;">Add new item</h1>
+      <p style="margin: 4px 0 0; font-size: 15px; color: #5E5A52;">Fields marked * are required.</p>
+    </header>
+
+    <sc-if value="{{showSaved}}" hint-placeholder-val="{{ false }}">
+      <div role="status" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #E3EEE7; color: #123D2C; border: 1px solid #B9D6C5;">
+        <span style="font-size: 15px; font-weight: 500;">{{savedMsg}}</span>
+        <button type="button" onClick="{{dismiss}}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #123D2C; font: 600 14px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer;">Dismiss</button>
+      </div>
+    </sc-if>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px;">
+
+      <form onSubmit="{{onSubmit}}" style="flex: 2 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
+
+        <fieldset style="margin: 0; border: 1px solid #DDD8CC; border-radius: 14px; background: #FFFEFB; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+          <legend style="padding: 0 6px; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 18px;">Item details</legend>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="name" style="font-size: 13px; font-weight: 600;">Item name *</label>
+            <input id="name" type="text" value="{{name}}" onChange="{{onName}}" placeholder="e.g. Jasmine rice, 1 kg" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid {{nameBorder}}; border-radius: 10px; background: #FFFFFF; font: 400 15px 'IBM Plex Sans', system-ui, sans-serif; color: #1C1B18;">
+            <sc-if value="{{nameErr}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size: 13px; color: #A12A1E;">Enter the item name.</span>
+            </sc-if>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="desc" style="font-size: 13px; font-weight: 600;">Description</label>
+            <textarea id="desc" rows="3" value="{{desc}}" onChange="{{onDesc}}" placeholder="Brand, pack size, variant, storage notes" style="box-sizing: border-box; padding: 10px 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 400 15px/1.45 'IBM Plex Sans', system-ui, sans-serif; color: #1C1B18; resize: vertical;"></textarea>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="cat" style="font-size: 13px; font-weight: 600;">Category</label>
+              <select id="cat" value="{{cat}}" onChange="{{onCat}}" style="height: 44px; box-sizing: border-box; padding: 0 10px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 400 15px 'IBM Plex Sans', system-ui, sans-serif; color: #1C1B18;">
+                <option value="">Choose a category</option>
+                <option value="Rice &amp; grains">Rice &amp; grains</option>
+                <option value="Canned goods">Canned goods</option>
+                <option value="Noodles">Noodles</option>
+                <option value="Oil &amp; condiments">Oil &amp; condiments</option>
+                <option value="Baking">Baking</option>
+                <option value="Beverages">Beverages</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Household">Household</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="sku" style="font-size: 13px; font-weight: 600;">SKU / barcode</label>
+              <input id="sku" type="text" value="{{sku}}" onChange="{{onSku}}" placeholder="Scan or type" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 500 15px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset style="margin: 0; border: 1px solid #DDD8CC; border-radius: 14px; background: #FFFEFB; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+          <legend style="padding: 0 6px; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 18px;">Stock &amp; pricing</legend>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="qty" style="font-size: 13px; font-weight: 600;">Quantity in stock *</label>
+              <input id="qty" type="number" min="0" step="1" inputmode="numeric" value="{{qty}}" onChange="{{onQty}}" placeholder="0" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid {{qtyBorder}}; border-radius: 10px; background: #FFFFFF; font: 500 15px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+              <sc-if value="{{qtyErr}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 13px; color: #A12A1E;">Enter how many are in stock.</span>
+              </sc-if>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="unit" style="font-size: 13px; font-weight: 600;">Unit</label>
+              <select id="unit" value="{{unit}}" onChange="{{onUnit}}" style="height: 44px; box-sizing: border-box; padding: 0 10px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 400 15px 'IBM Plex Sans', system-ui, sans-serif; color: #1C1B18;">
+                <option value="pc">Piece</option>
+                <option value="pack">Pack</option>
+                <option value="kg">Kilogram</option>
+                <option value="sack">Sack</option>
+                <option value="box">Box</option>
+                <option value="bottle">Bottle</option>
+                <option value="can">Can</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="reorder" style="font-size: 13px; font-weight: 600;">Reorder level</label>
+              <input id="reorder" type="number" min="0" step="1" inputmode="numeric" value="{{reorder}}" onChange="{{onReorder}}" placeholder="0" aria-describedby="reorder-hint" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 500 15px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+              <span id="reorder-hint" style="font-size: 12px; color: #5E5A52;">Flag as low stock at or below this.</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 16px; align-items: start;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="cost" style="font-size: 13px; font-weight: 600;">Cost price (₱)</label>
+              <input id="cost" type="number" min="0" step="0.01" inputmode="decimal" value="{{cost}}" onChange="{{onCost}}" placeholder="0.00" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #CFC9BB; border-radius: 10px; background: #FFFFFF; font: 500 15px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="price" style="font-size: 13px; font-weight: 600;">Selling price (₱) *</label>
+              <input id="price" type="number" min="0" step="0.01" inputmode="decimal" value="{{price}}" onChange="{{onPrice}}" placeholder="0.00" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid {{priceBorder}}; border-radius: 10px; background: #FFFFFF; font: 500 15px 'IBM Plex Mono', ui-monospace, monospace; color: #1C1B18;">
+              <sc-if value="{{priceErr}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 13px; color: #A12A1E;">Enter the selling price.</span>
+              </sc-if>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: #F4F2EC;">
+              <span style="font-size: 13px; font-weight: 600; color: #5E5A52;">Margin per unit</span>
+              <span style="font: 500 18px 'IBM Plex Mono', ui-monospace, monospace;">{{margin}}</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset style="margin: 0; border: 1px solid #DDD8CC; border-radius: 14px; background: #FFFEFB; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+          <legend style="padding: 0 6px; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 18px;">Photo</legend>
+          <label for="photo" style="min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; border: 1.5px dashed #A39C8C; border-radius: 12px; background: #F4F2EC; text-align: center; cursor: pointer;">
+            <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1E5B43" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
+            <span style="font-size: 15px; font-weight: 600; color: #1E5B43;">{{photoLabel}}</span>
+            <span style="font-size: 13px; color: #5E5A52;">JPG, PNG or WEBP · square photos look best</span>
+          </label>
+          <input id="photo" type="file" accept="image/png,image/jpeg,image/webp" onChange="{{onPhoto}}" style="position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;">
+        </fieldset>
+
+        <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px;">
+          <a href="Main.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 10px; text-decoration: none; font-size: 15px; font-weight: 600; color: #1C1B18;">Cancel</a>
+          <button type="button" onClick="{{saveAnother}}" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #1E5B43; background: #FFFEFB; color: #1E5B43; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer;">Save &amp; add another</button>
+          <button type="submit" style="min-height: 44px; padding: 0 22px; border-radius: 10px; border: 0; background: #1E5B43; color: #FFFFFF; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer;">Save item</button>
+        </div>
+      </form>
+
+      <aside aria-label="Preview" style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+        <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5E5A52;">Preview</span>
+        <div style="background: #FFFEFB; border: 1px solid #DDD8CC; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;">
+          <sc-if value="{{hasPhoto}}" hint-placeholder-val="{{ false }}">
+            <img src="{{photo}}" alt="{{photoAlt}}" style="width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block;">
+          </sc-if>
+          <sc-if value="{{noPhoto}}" hint-placeholder-val="{{ true }}">
+            <div style="aspect-ratio: 4 / 3; background: #ECE8DF; display: flex; align-items: center; justify-content: center; color: #8A8478;">
+              <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 16-5-5-9 9"></path></svg>
+            </div>
+          </sc-if>
+          <div style="padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5E5A52;">{{catLabel}}</span>
+            <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 20px; line-height: 1.2;">{{nameLabel}}</span>
+            <span style="font-size: 14px; line-height: 1.45; color: #5E5A52; white-space: pre-line;">{{descLabel}}</span>
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding-top: 6px;">
+              <span style="font: 500 20px 'IBM Plex Mono', ui-monospace, monospace;">{{priceLabel}}</span>
+              <span style="padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: {{statusBg}}; color: {{statusFg}};">{{statusLabel}}</span>
+            </div>
+            <span style="font: 400 13px 'IBM Plex Mono', ui-monospace, monospace; color: #5E5A52;">{{stockLabel}}</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+var UNITS = { pc: 'pcs', pack: 'packs', kg: 'kg', sack: 'sacks', box: 'boxes', bottle: 'bottles', can: 'cans' };
+var BLANK = { name: '', desc: '', cat: '', sku: '', unit: 'pc', qty: '', reorder: '', cost: '', price: '', photo: '', photoName: '' };
+function peso(n) { return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+class Component extends DCLogic {
+  state = Object.assign({}, BLANK, { tried: false, savedMsg: '' });
+
+  save(again) {
+    var s = this.state;
+    var ok = s.name.trim() !== '' && s.qty !== '' && s.price !== '';
+    if (!ok) { this.setState({ tried: true, savedMsg: '' }); return; }
+    var msg = '“' + s.name.trim() + '” was added to inventory with ' + s.qty + ' ' + (UNITS[s.unit] || s.unit) + ' in stock.';
+    if (again) this.setState(Object.assign({}, BLANK, { tried: false, savedMsg: msg }));
+    else this.setState({ tried: false, savedMsg: msg });
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    function field(k) { return function (e) { var o = {}; o[k] = e.target.value; self.setState(o); }; }
+    var nameErr = s.tried && s.name.trim() === '';
+    var qtyErr = s.tried && s.qty === '';
+    var priceErr = s.tried && s.price === '';
+    var q = s.qty === '' ? null : Number(s.qty);
+    var r = s.reorder === '' ? 0 : Number(s.reorder);
+    var status = q === null ? ['Stock not set', '#ECE8DF', '#5E5A52']
+      : q <= 0 ? ['Out of stock', '#F2DEDC', '#8E2A20']
+      : q <= r ? ['Low stock', '#F7E7D6', '#8A4209']
+      : ['In stock', '#E3EEE7', '#1E5B43'];
+    var margin = '—';
+    if (s.price !== '' && s.cost !== '') {
+      var m = Number(s.price) - Number(s.cost);
+      var pct = Number(s.price) > 0 ? Math.round(m / Number(s.price) * 100) : 0;
+      margin = peso(m) + ' · ' + pct + '%';
+    }
+    return {
+      name: s.name, desc: s.desc, cat: s.cat, sku: s.sku, unit: s.unit,
+      qty: s.qty, reorder: s.reorder, cost: s.cost, price: s.price,
+      onName: field('name'), onDesc: field('desc'), onCat: field('cat'), onSku: field('sku'),
+      onUnit: field('unit'), onQty: field('qty'), onReorder: field('reorder'),
+      onCost: field('cost'), onPrice: field('price'),
+      onPhoto: function (e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) self.setState({ photo: URL.createObjectURL(f), photoName: f.name });
+      },
+      onSubmit: function (e) { e.preventDefault(); self.save(false); },
+      saveAnother: function () { self.save(true); },
+      dismiss: function () { self.setState({ savedMsg: '' }); },
+      showSaved: s.savedMsg !== '',
+      savedMsg: s.savedMsg,
+      nameErr: nameErr, qtyErr: qtyErr, priceErr: priceErr,
+      nameBorder: nameErr ? '#A12A1E' : '#CFC9BB',
+      qtyBorder: qtyErr ? '#A12A1E' : '#CFC9BB',
+      priceBorder: priceErr ? '#A12A1E' : '#CFC9BB',
+      margin: margin,
+      photo: s.photo,
+      hasPhoto: s.photo !== '',
+      noPhoto: s.photo === '',
+      photoAlt: s.name ? 'Photo of ' + s.name : 'Item photo',
+      photoLabel: s.photoName ? 'Replace photo · ' + s.photoName : 'Upload a photo',
+      catLabel: s.cat || 'No category',
+      nameLabel: s.name || 'Item name',
+      descLabel: s.desc || 'Description shows here.',
+      priceLabel: s.price !== '' ? peso(s.price) : '₱ —',
+      stockLabel: (q === null ? '—' : q) + ' ' + (UNITS[s.unit] || s.unit) + ' on hand' + (s.sku ? ' · ' + s.sku : ''),
+      statusLabel: status[0], statusBg: status[1], statusFg: status[2]
+    };
+  }
+}
+</script>
+</body>
+</html>
