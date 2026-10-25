@@ -19,6 +19,9 @@ app.use('/api/categories', require('./routes/categories'));
 app.use('/api/items', require('./routes/items'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/customers', require('./routes/customers'));
+app.use('/api/orders', require('./routes/orders'));
+app.use('/api/sync', require('./routes/sync'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

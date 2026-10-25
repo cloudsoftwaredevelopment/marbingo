@@ -10,6 +10,7 @@ import retrofit2.http.Query
 /** Retrofit interface for the endpoints the field app uses (docs/field-api.md). Paths are relative to the base URL. */
 interface MarbingoApi {
     @POST("api/auth/login") suspend fun login(@Body body: LoginRequest): LoginResponse
+    @POST("api/auth/refresh") suspend fun refresh(@Body body: RefreshRequest): TokenPair
     @GET("api/auth/me") suspend fun me(): MeResponse
     @GET("api/settings") suspend fun settings(): SettingsDto
 

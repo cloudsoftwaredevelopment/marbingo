@@ -47,6 +47,9 @@ export default function SalesReport() {
   const buckets = bad ? [] : data?.buckets || [];
   const items = bad ? [] : data?.items || [];
   const vmax = Math.max(1, ...buckets.filter((b) => !b.upcoming).map((b) => b.value));
+  const stores = bad ? null : Array.isArray(data?.stores) ? data.stores : null;
+  const maxStore = stores && stores.length ? Math.max(...stores.map((s) => s.revenue), 1) : 1;
+  const storeTotal = stores ? stores.reduce((a, s) => a + s.revenue, 0) : 0;
   const maxRev = items.length ? items[0].revenue : 0;
   const first = data === null && loading;
   const dim = loading && data ? 0.55 : 1;
@@ -163,6 +166,39 @@ export default function SalesReport() {
               </div>
             </div>
           </section>
+          {stores && (
+            <section aria-labelledby="stores-h" style={{ ...cardStyle, padding: 24, display: 'flex', flexDirection: 'column', gap: 16, opacity: dim }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <h2 id="stores-h" style={h2Style}>Sales by store</h2>
+                <span style={{ fontSize: 13, color: '#5E5A52' }}>Field sales, sorted by revenue</span>
+              </div>
+              {stores.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 15, color: '#5E5A52' }}>No field sales in this period.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <div style={{ minWidth: 640, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
+                      <span>#</span><span>Store</span><span style={{ textAlign: 'right' }}>Orders</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of field sales</span>
+                    </div>
+                    {stores.map((r, i) => (
+                      <div key={r.id} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ECE8DF' }}>
+                        <span style={{ font: `500 13px ${M}`, color: '#5E5A52' }}>{i + 1}</span>
+                        <span style={{ fontSize: 15, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{r.name}</span>
+                        <span style={{ textAlign: 'right', font: `500 14px ${M}` }}>{num(r.orders)}</span>
+                        <span style={{ textAlign: 'right', font: `500 14px ${M}` }}>{pesoWhole(r.revenue)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div aria-hidden="true" style={{ flex: '1 1 auto', height: 8, background: '#ECE8DF', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ width: `${((r.revenue / maxStore) * 100).toFixed(1)}%`, height: '100%', background: '#1E5B43', borderRadius: 4 }} />
+                          </div>
+                          <span style={{ width: 48, textAlign: 'right', font: `500 13px ${M}`, color: '#5E5A52' }}>{(storeTotal ? (r.revenue / storeTotal) * 100 : 0).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
     </>

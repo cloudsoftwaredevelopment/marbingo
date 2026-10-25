@@ -42,6 +42,11 @@ function parse(b, partial) {
     if (Number.isNaN(c)) fields.cost = 'Enter a valid cost price.';
     else data.costPrice = c;
   }
+  if (has(b, 'wholesale')) {
+    const w = toCentavos(b.wholesale);
+    if (Number.isNaN(w)) fields.wholesale = 'Enter a valid wholesale price.';
+    else data.wholesalePrice = w;
+  }
   if (has(b, 'unit') && String(b.unit).trim() !== '') {
     if (!UNITS.includes(b.unit)) fields.unit = 'Choose a unit.';
     else data.unit = b.unit;

@@ -4,7 +4,7 @@ import api, { apiError } from '../lib/api';
 import { UNITS, unitPlural } from '../lib/format';
 import '../styles/forms.css';
 
-const BLANK = { name: '', desc: '', cat: '', sku: '', unit: 'pc', qty: '', reorder: '', cost: '', price: '' };
+const BLANK = { name: '', desc: '', cat: '', sku: '', unit: 'pc', qty: '', reorder: '', cost: '', price: '', wholesale: '' };
 const peso2 = (n) => '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function AddItem() {
@@ -68,6 +68,7 @@ export default function AddItem() {
     if (f.reorder !== '') fd.append('reorder', f.reorder);
     if (f.cost !== '') fd.append('cost', f.cost);
     fd.append('price', f.price);
+    if (f.wholesale !== '') fd.append('wholesale', f.wholesale);
     if (file) fd.append('photo', file);
     try {
       await api.post('/items', fd);
@@ -92,6 +93,11 @@ export default function AddItem() {
   if (f.price !== '' && f.cost !== '') {
     const p = Number(f.price), m = p - Number(f.cost);
     margin = peso2(m) + ' · ' + (p > 0 ? Math.round((m / p) * 100) : 0) + '%';
+  }
+  let wMargin = null;
+  if (f.wholesale !== '' && f.cost !== '') {
+    const w = Number(f.wholesale), m = w - Number(f.cost);
+    wMargin = peso2(m) + ' · ' + (w > 0 ? Math.round((m / w) * 100) : 0) + '%';
   }
   const catName = cats.find((c) => String(c.id) === String(f.cat))?.name;
 
@@ -185,9 +191,16 @@ export default function AddItem() {
                 <input id="price" type="number" min="0" step="0.01" inputMode="decimal" className={'input mono' + (priceErr ? ' invalid' : '')} value={f.price} onChange={set('price')} placeholder="0.00" aria-invalid={!!priceErr} />
                 {priceErr && <span className="err">{priceErr}</span>}
               </div>
+              <div className="field">
+                <label htmlFor="wholesale">Wholesale price (₱)</label>
+                <input id="wholesale" type="number" min="0" step="0.01" inputMode="decimal" className={'input mono' + (fe.wholesale ? ' invalid' : '')} value={f.wholesale} onChange={set('wholesale')} placeholder="0.00" aria-describedby="wholesale-hint" />
+                <span id="wholesale-hint" className="hint">Used for orders from stores. Leave blank to use the selling price.</span>
+                {fe.wholesale && <span className="err">{fe.wholesale}</span>}
+              </div>
               <div className="margin-box">
                 <span className="t">Margin per unit</span>
                 <span className="v">{margin}</span>
+                {wMargin && <span className="t" style={{ marginTop: 4 }}>Wholesale margin <span className="mono" style={{ color: 'var(--ink)' }}>{wMargin}</span></span>}
               </div>
             </div>
           </fieldset>
@@ -235,6 +248,7 @@ export default function AddItem() {
                 <span className="price">{f.price !== '' ? peso2(f.price) : '₱ —'}</span>
                 <span className={'badge ' + badgeCls}>{badgeTxt}</span>
               </div>
+              {f.wholesale !== '' && <span className="stock">Wholesale {peso2(f.wholesale)}</span>}
               <span className="stock">{(q === null ? '—' : q) + ' ' + unitPlural(f.unit) + ' on hand' + (f.sku ? ' · ' + f.sku : '')}</span>
             </div>
           </div>

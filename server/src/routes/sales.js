@@ -21,7 +21,7 @@ const shapeSale = (s) => ({
   })),
 });
 
-router.post('/', requireRole('MANAGER', 'CASHIER', 'AGENT'), wrap(async (req, res) => {
+router.post('/', requireRole('MANAGER', 'CASHIER'), wrap(async (req, res) => {
   const raw = Array.isArray(req.body && req.body.lines) ? req.body.lines : [];
   if (!raw.length) return fail(res, 400, 'Add at least one item to the sale.');
   const merged = new Map();
@@ -33,7 +33,7 @@ router.post('/', requireRole('MANAGER', 'CASHIER', 'AGENT'), wrap(async (req, re
     }
     merged.set(itemId, (merged.get(itemId) || 0) + qty);
   }
-  const channel = req.user.role === 'AGENT' ? 'field' : 'counter';
+  const channel = 'counter';
 
   const result = await prisma.$transaction(async (tx) => {
     const items = await tx.item.findMany({ where: { id: { in: [...merged.keys()] } } });
@@ -74,7 +74,7 @@ router.post('/', requireRole('MANAGER', 'CASHIER', 'AGENT'), wrap(async (req, re
   res.status(201).json({ sale: shapeSale(result) });
 }));
 
-router.get('/mine', requireRole('MANAGER', 'CASHIER', 'AGENT'), wrap(async (req, res) => {
+router.get('/mine', requireRole('MANAGER', 'CASHIER'), wrap(async (req, res) => {
   const today = dayOf(new Date());
   const a = req.query.from ? parseIso(req.query.from) : today;
   const b = req.query.to ? parseIso(req.query.to) : a === null ? null : Math.max(a, today);

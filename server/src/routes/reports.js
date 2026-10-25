@@ -15,11 +15,11 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
   if (p.error) {
     return res.json({
       range: { label: p.error }, error: p.error, unit: 'By week',
-      totals: { gross: 0, transactions: 0, units: 0, average: 0 }, buckets: [], items: [],
+      totals: { gross: 0, transactions: 0, units: 0, average: 0 }, buckets: [], items: [], stores: [],
     });
   }
 
-  const [sales, rows] = await Promise.all([
+  const [sales, rows, stores] = await Promise.all([
     prisma.sale.findMany({
       where: { soldAt: { gte: p.from, lt: p.to } },
       select: { soldAt: true, total: true },
@@ -34,6 +34,13 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
       WHERE s.sold_at >= ${p.from} AND s.sold_at < ${p.to}
       GROUP BY i.id, i.name, c.name
       ORDER BY revenue DESC, i.name`,
+    prisma.$queryRaw`
+      SELECT c.id, c.name, COUNT(*)::int AS orders, SUM(s.total)::int AS revenue
+      FROM sales s
+      JOIN customers c ON c.id = s.customer_id
+      WHERE s.sold_at >= ${p.from} AND s.sold_at < ${p.to}
+      GROUP BY c.id, c.name
+      ORDER BY revenue DESC, c.name`,
   ]);
 
   const values = p.buckets.map(() => 0);
@@ -55,6 +62,7 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
       .filter((b) => !b.offHours || b.value > 0)
       .map(({ offHours, ...b }) => b),
     items: rows.map((r) => ({ id: r.id, name: r.name, category: r.category, units: r.units, revenue: r.revenue })),
+    stores: stores.map((r) => ({ id: r.id, name: r.name, orders: r.orders, revenue: r.revenue })),
   });
 }));
 

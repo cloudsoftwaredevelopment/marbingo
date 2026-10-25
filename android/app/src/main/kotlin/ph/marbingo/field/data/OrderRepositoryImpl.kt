@@ -1,0 +1,82 @@
+package ph.marbingo.field.data
+
+import androidx.room.withTransaction
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import ph.marbingo.core.model.CancelRequest
+import ph.marbingo.core.net.ApiErrors
+import ph.marbingo.core.net.MarbingoApi
+import ph.marbingo.core.net.TokenStore
+import ph.marbingo.field.data.db.AppDatabase
+import ph.marbingo.field.data.db.OrderEntity
+import ph.marbingo.field.data.db.OrderLineEntity
+import ph.marbingo.field.sync.SyncTrigger
+import retrofit2.HttpException
+import java.io.IOException
+import java.util.UUID
+
+class OrderRepositoryImpl(
+    private val db: AppDatabase,
+    private val api: MarbingoApi,
+    private val tokens: TokenStore,
+    private val trigger: SyncTrigger,
+    private val now: () -> Long = System::currentTimeMillis,
+) : OrderRepository {
+
+    override fun recent(limit: Int): Flow<List<Order>> = db.orders().recent(limit).map { l -> l.map { it.toModel() } }
+    override fun forStore(storeClientUuid: String): Flow<List<Order>> =
+        db.orders().forStore(storeClientUuid).map { l -> l.map { it.toModel() } }
+    override fun observe(clientUuid: String): Flow<Order?> = db.orders().observe(clientUuid).map { it?.toModel() }
+
+    override suspend fun place(storeClientUuid: String, lines: List<CartLine>, notes: String?): String {
+        if (lines.isEmpty()) throw UserFacingException("Add at least one item.")
+        if (lines.any { it.qty < 1 }) throw UserFacingException("Quantities must be at least 1.")
+        val store = db.customers().get(storeClientUuid) ?: throw UserFacingException("Choose a store first.")
+        val uuid = UUID.randomUUID().toString()
+        val t = now()
+        val user = tokens.user
+        // Merge duplicate items and price from the cache (the server re-prices at fieldPrice anyway).
+        val merged = lines.groupBy { it.item.id }.map { (id, group) ->
+            val item = db.items().byId(id)?.toModel() ?: group.first().item
+            Triple(item, group.sumOf { it.qty }, item.fieldPrice)
+        }
+        val rows = merged.map { (item, qty, price) ->
+            OrderLineEntity(orderClientUuid = uuid, itemId = item.id, name = item.name, unit = item.unit,
+                qty = qty, unitPrice = price, lineTotal = price * qty, deliveredQty = null)
+        }
+        val order = OrderEntity(
+            clientUuid = uuid, serverId = null, customerClientUuid = store.clientUuid, storeName = store.name,
+            status = OrderStatus.PENDING.name, syncState = SyncState.QUEUED.name, syncError = null, attempts = 0,
+            orderedAt = t, total = rows.sumOf { it.lineTotal }, notes = notes?.trim()?.ifEmpty { null },
+            deliveredAt = null, cancelledReason = null,
+            agentName = user?.let { "${it.firstName} ${it.lastName}".trim() }, updatedAt = t,
+        )
+        db.withTransaction { db.orders().replace(order, rows) }
+        trigger.syncNow()
+        return uuid
+    }
+
+    override suspend fun cancel(clientUuid: String, reason: String) {
+        val o = db.orders().get(clientUuid) ?: return
+        val serverId = o.serverId
+        if (serverId == null || o.syncState != SyncState.SYNCED.name) {
+            // Never reached the server (or was rejected): just forget it.
+            db.orders().delete(clientUuid)
+            return
+        }
+        if (!o.status.equals(OrderStatus.PENDING.name, ignoreCase = true)) {
+            throw UserFacingException("Only pending orders can be cancelled.")
+        }
+        val dto = try {
+            api.cancelOrder(serverId, CancelRequest(reason.trim()))
+        } catch (e: IOException) {
+            throw UserFacingException("You need a connection to cancel an order that was already sent.")
+        } catch (e: HttpException) {
+            throw UserFacingException(ApiErrors.message(e, "Couldn't cancel this order."))
+        }.order
+        db.withTransaction {
+            val (e, rows) = dto.toEntities(db.orders().get(clientUuid), now())
+            db.orders().replace(e, rows)
+        }
+    }
+}

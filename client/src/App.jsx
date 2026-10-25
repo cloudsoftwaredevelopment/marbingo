@@ -7,6 +7,8 @@ import AddItem from './pages/AddItem';
 import Profile from './pages/Profile';
 import Pos from './pages/Pos';
 import Admin from './pages/Admin';
+import Orders from './pages/Orders';
+import Stores from './pages/Stores';
 
 // Layout renders <Outlet/> inside the shell with the sidebar.
 export default function App() {
@@ -17,6 +19,8 @@ export default function App() {
         <Route index element={<RequireAuth cap="reports"><SalesReport /></RequireAuth>} />
         <Route path="items/new" element={<RequireAuth cap="items"><AddItem /></RequireAuth>} />
         <Route path="pos" element={<RequireAuth cap="pos"><Pos /></RequireAuth>} />
+        <Route path="orders" element={<RequireAuth cap="orders"><Orders /></RequireAuth>} />
+        <Route path="stores" element={<RequireAuth cap="stores"><Stores /></RequireAuth>} />
         <Route path="admin" element={<RequireAuth cap="admin"><Admin /></RequireAuth>} />
         <Route path="profile" element={<Profile />} />
       </Route>

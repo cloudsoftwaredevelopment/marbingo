@@ -1,6 +1,7 @@
 # Marbingo — Dry Goods Back Office
 
-Back-office dashboard for a dry goods shop: sales report, add item, record sale (POS), profile, admin.
+Back-office dashboard for a dry goods shop: sales report, add item, record sale (POS), field orders, stores, profile, admin — plus **Marbingo Field**, a native Android app (`android/`) agents use offline to take orders at stores.
+Field orders API contract: `docs/field-api.md` (shared by server, web and Android).
 Spec: `HANDOFF.md` (wins over designs). Visual reference: `design/*.dc.html` (design-tool files — never ship).
 
 ## Stack
@@ -33,15 +34,39 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 |---|---|---|---|---|
 | Sales report | ✅ | ✅ | | |
 | Add item / restock | ✅ | ✅ | | |
-| Record sale | ✅ | | ✅ counter | ✅ field |
+| Record sale (web POS) | ✅ | | ✅ | |
+| Orders: view | all | all | | own (web read-only + Android app) |
+| Orders: take (Android app) | ✅ | | | ✅ |
+| Orders: deliver / cancel | ✅ | ✅ | | cancel own pending |
+| Stores | ✅ | ✅ | | ✅ (app; edit own) |
 | Top 10 sidebar | turnover + revenue | turnover + revenue | turnover only | turnover only |
 | Admin (users, categories, shop name + logo letters) | ✅ | | | |
 
 ## Demo logins (password `marbingo123`)
 maria@ (Manager) · jose@ (Inventory) · ana@ (Cashier) · ramon@ (Agent) — all `@marbingo.test`.
 
+## Field orders (how it works)
+Agent takes an order in the app (works offline) → it syncs to `orders` (status `pending`) → staff **Deliver** it on the web `/orders` page (can deliver less than ordered) → only then is stock decremented and a `Sale` (channel `field`, `customer_id`) created, so reports count it on the delivery date. Order lines are priced at `items.wholesale_price ?? selling_price` at order time. Offline idempotency: the device generates `client_uuid` for orders and stores; `POST /api/orders/batch` returns the existing row on replay.
+
+## Android app (`android/`)
+Kotlin + Jetpack Compose, same toolchain/patterns as `/var/www/recit/android`. `:core` (no Compose: ApiClient + token refresh, DTOs, Money, EscPos, ReceiptFormatter) and `:app` (Compose UI, Room offline cache/outbox, WorkManager `SyncWorker` → `SyncEngine`, Bluetooth printing, PDF share). UI depends only on `app/.../data/Repositories.kt` interfaces; `ui/preview/Fakes.kt` implements them for tests/previews.
+```bash
+cd android && source /etc/profile.d/android-sdk.sh
+./gradlew :core:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+SCREENSHOT_DIR=/tmp/shots ./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest*'   # render screens headlessly
+cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-debug.apk && node ../scripts/refresh-downloads.js
+```
+- No emulator on this box: only JVM/Robolectric tests. `LiveServerTest` hits the live server (skips if unreachable) and **creates a real order + store** — reseed afterwards.
+- Debug build → `http://marbingo.62-84-181-147.sslip.io/` (cleartext allowed for that host only, `src/debug/res/xml/network_security_config.xml`). Release (`API_BASE_URL` = `https://CHANGE-ME/`) needs the real HTTPS domain and a keystore kept **outside the repo** (`/root/keystores/`).
+- Room is at version 1 with no destructive migration — any entity change needs a real `Migration` (agents may have queued orders on-device).
+- Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each published build; installing over the old APK keeps queued orders.
+- APKs: `downloads/` served by nginx at `/downloads/` (MIME `application/vnd.android.package-archive`); APKs + `index.html` are gitignored.
+
+### Handset checklist (can't be tested here)
+Sign in online → airplane mode → add a store + take an order (scan a barcode with the camera) → order shows "Waiting to sync" → reconnect → it syncs and appears on web `/orders` → deliver it on the web → app shows Delivered after sync. Also: Bluetooth printer pick + test print + print slip (58mm ESC/POS), Share PDF via Messenger/Viber, sign-out blocked while orders are unsynced.
+
 ## Deploy
-Nginx config at `/etc/nginx/sites-available/marbingo` is **not enabled** — replace `DOMAIN`, symlink, `nginx -t`, reload, `certbot --nginx -d DOMAIN`.
+Temporary test host: `marbingo.62-84-181-147.sslip.io` (nginx site enabled, HTTP only). For production: put the real domain in `/etc/nginx/sites-available/marbingo`, reload, `certbot --nginx -d DOMAIN`, and update the Android release `API_BASE_URL`.
 
 ## Not built yet (HANDOFF §9)
 Inventory list / edit-item screen (API `PUT /api/items/:id` + restock exist), stock-history view.
