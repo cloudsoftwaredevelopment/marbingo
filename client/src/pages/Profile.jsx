@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api, { apiError } from '../lib/api';
+import api, { apiError, TOKEN_KEY, REFRESH_KEY } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, initials, longDate } from '../lib/format';
 import '../styles/forms.css';
@@ -84,7 +84,10 @@ export default function Profile() {
     if (pw.next !== pw.conf) return bad('The new passwords don’t match.');
     setSavingPw(true);
     try {
-      await api.put('/profile/password', { current: pw.cur, next: pw.next });
+      // The server revokes other sessions and returns fresh tokens for this one.
+      const { data } = await api.put('/profile/password', { current: pw.cur, next: pw.next });
+      if (data.accessToken) localStorage.setItem(TOKEN_KEY, data.accessToken);
+      if (data.refreshToken) localStorage.setItem(REFRESH_KEY, data.refreshToken);
       setPw({ cur: '', next: '', conf: '' });
       setPwMsg({ text: 'Password updated.', ok: true });
     } catch (err) {

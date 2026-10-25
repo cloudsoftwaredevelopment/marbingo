@@ -9,7 +9,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // Strips secrets before sending a user to the client.
 function publicUser(u) {
   if (!u) return null;
-  const { passwordHash, ...rest } = u;
+  const { passwordHash, tokenVersion, ...rest } = u;
   return rest;
 }
 
@@ -21,4 +21,14 @@ function toCentavos(v) {
   return Math.round(n * 100);
 }
 
-module.exports = { fail, wrap, publicUser, toCentavos };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// router.param('id', idParam('Item not found.')) — non-integer ids become a 404, not a Prisma 500.
+const idParam = (notFound) => (req, res, next, raw) => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) return fail(res, 404, notFound);
+  req.id = id;
+  next();
+};
+
+module.exports = { fail, wrap, publicUser, toCentavos, EMAIL_RE, idParam };

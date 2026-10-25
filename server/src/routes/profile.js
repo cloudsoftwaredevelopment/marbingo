@@ -1,20 +1,10 @@
 const router = require('express').Router();
-const path = require('path');
-const fs = require('fs');
 const bcrypt = require('bcryptjs');
-const multer = require('multer');
-const sharp = require('sharp');
 const prisma = require('../db');
 const { authenticate } = require('../middleware/auth');
-const { fail, wrap, publicUser } = require('../lib/http');
-
-const dir = path.join(__dirname, '..', '..', 'uploads', 'avatars');
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (req, file, cb) =>
-    cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype))
-});
+const { fail, wrap, publicUser, EMAIL_RE } = require('../lib/http');
+const { imageUpload, saveImage, TYPE_MSG } = require('../lib/upload');
+const { tokens } = require('./auth');
 
 router.use(authenticate);
 
@@ -28,7 +18,7 @@ router.put('/', wrap(async (req, res) => {
   const fields = {};
   if (!firstName) fields.firstName = 'Enter your first name.';
   if (!lastName) fields.lastName = 'Enter your last name.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.email = 'Enter a valid email address.';
+  if (!EMAIL_RE.test(email)) fields.email = 'Enter a valid email address.';
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
 
   const clash = await prisma.user.findUnique({ where: { email } });
@@ -46,12 +36,10 @@ router.put('/', wrap(async (req, res) => {
   res.json({ user: publicUser(user) });
 }));
 
-router.post('/photo', upload.single('photo'), wrap(async (req, res) => {
-  if (!req.file) return fail(res, 400, 'Choose a JPG, PNG or WEBP image.', { photo: 'Choose a JPG, PNG or WEBP image.' });
-  fs.mkdirSync(dir, { recursive: true });
-  const name = `${req.user.id}-${Date.now()}.webp`;
-  await sharp(req.file.buffer).rotate().resize(400, 400, { fit: 'cover' }).webp({ quality: 85 }).toFile(path.join(dir, name));
-  const user = await prisma.user.update({ where: { id: req.user.id }, data: { photoUrl: `/uploads/avatars/${name}` } });
+router.post('/photo', imageUpload.single('photo'), wrap(async (req, res) => {
+  if (!req.file) return fail(res, 400, TYPE_MSG, { photo: TYPE_MSG });
+  const photoUrl = await saveImage(req.file.buffer, 'avatars', `${req.user.id}-${Date.now()}.webp`, { width: 400, height: 400, fit: 'cover' });
+  const user = await prisma.user.update({ where: { id: req.user.id }, data: { photoUrl } });
   res.json({ user: publicUser(user) });
 }));
 
@@ -62,8 +50,12 @@ router.put('/password', wrap(async (req, res) => {
     return fail(res, 400, 'Current password is incorrect.', { current: 'Current password is incorrect.' });
   }
   if (next.length < 8) return fail(res, 400, 'Use at least 8 characters.', { next: 'Use at least 8 characters.' });
-  await prisma.user.update({ where: { id: req.user.id }, data: { passwordHash: await bcrypt.hash(next, 10) } });
-  res.json({ ok: true });
+  // Bumping tokenVersion signs out every other session; this one gets fresh tokens.
+  const user = await prisma.user.update({
+    where: { id: req.user.id },
+    data: { passwordHash: await bcrypt.hash(next, 10), tokenVersion: { increment: 1 } }
+  });
+  res.json({ ok: true, ...tokens(user) });
 }));
 
 module.exports = router;

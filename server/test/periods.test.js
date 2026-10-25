@@ -58,13 +58,16 @@ test('Manila midnight boundary: 16:30Z Oct 25 is already Oct 26', () => {
   assert.strictEqual(before.label, 'Sun, Oct 25, 2026');
 });
 
-test('today: 12 hourly buckets 7a..6p', () => {
+test('today: hourly buckets 7a..6p plus off-hours, covering the whole day', () => {
   const p = resolvePeriod('today', {}, new Date('2026-10-26T03:00:00Z')); // 11:00 Manila
-  assert.deepStrictEqual(labels(p), ['7a', '8a', '9a', '10a', '11a', '12p', '1p', '2p', '3p', '4p', '5p', '6p']);
-  assert.strictEqual(p.buckets[0].start.toISOString(), '2026-10-25T23:00:00.000Z');
-  assert.strictEqual(p.buckets[11].end.toISOString(), '2026-10-26T11:00:00.000Z');
+  assert.deepStrictEqual(labels(p), ['Before 7a', '7a', '8a', '9a', '10a', '11a', '12p', '1p', '2p', '3p', '4p', '5p', '6p', 'After 7p']);
+  assert.strictEqual(p.buckets[0].start.toISOString(), p.from.toISOString());
+  assert.strictEqual(p.buckets[13].end.toISOString(), p.to.toISOString());
+  assert.strictEqual(p.buckets[1].start.toISOString(), '2026-10-25T23:00:00.000Z');
+  assert.strictEqual(p.buckets[12].end.toISOString(), '2026-10-26T11:00:00.000Z');
+  assert.deepStrictEqual(p.buckets.filter((b) => b.offHours).map((b) => b.label), ['Before 7a', 'After 7p']);
   assert.strictEqual(p.unit, 'By hour' + ' · dashed = days still ahead');
-  assert.strictEqual(p.buckets.filter((b) => b.upcoming).length, 7);
+  assert.strictEqual(p.buckets.filter((b) => b.upcoming).length, 8);
 });
 
 test('custom: invalid ranges', () => {
@@ -89,9 +92,9 @@ test('custom: single-day trailing chunk and single day', () => {
   assert.deepStrictEqual(labels(resolvePeriod('custom', { from: '2026-09-15', to: '2026-09-15' }, NOW)), ['Sep 15']);
 });
 
-test('custom: capped at 366 days, year crossing label', () => {
-  const p = resolvePeriod('custom', { from: '2025-01-01', to: '2030-01-01' }, NOW);
-  assert.strictEqual(p.toDate, '2026-01-01');
+test('custom: over 366 days is an error, year crossing label', () => {
+  assert.strictEqual(resolvePeriod('custom', { from: '2025-01-01', to: '2026-01-01' }, NOW).toDate, '2026-01-01');
+  assert.deepStrictEqual(resolvePeriod('custom', { from: '2025-01-01', to: '2026-01-02' }, NOW), { error: 'Choose a range of 366 days or less' });
   const q = resolvePeriod('custom', { from: '2025-12-29', to: '2026-01-04' }, NOW);
   assert.strictEqual(q.label, 'Dec 29, 2025 – Jan 4, 2026');
   assert.deepStrictEqual(labels(q), ['Dec 29–Jan 4']);

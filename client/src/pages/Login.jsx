@@ -36,7 +36,7 @@ export default function Login() {
     <div className="login-page">
       <main className="card login-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{shopInitials(shop)}</div>
+          <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{shopInitials(shop, settings?.shopMark)}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, lineHeight: 1.1 }}>{shop}</span>
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>Back office</span>

@@ -9,11 +9,12 @@ import '../styles/shell.css';
 const D = "'Bricolage Grotesque', system-ui, sans-serif";
 const M = "'IBM Plex Mono', ui-monospace, monospace";
 
-export function shopInitials(name) {
+// Logo mark: the configured shop mark, else initials of the first two words / first two letters.
+export function shopInitials(name, mark) {
+  if (mark) return mark;
   const w = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!w.length) return 'MB';
-  const s = w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2);
-  return s.toUpperCase();
+  return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase();
 }
 
 const Icon = ({ children }) => (
@@ -30,7 +31,8 @@ const NAV = [
 
 const MODES = [{ id: 'turnover', label: 'Turnover' }, { id: 'sales', label: 'Sales' }];
 
-function TopItems() {
+// Revenue mode is only offered to roles that can see the Sales report (server enforces this too).
+function TopItems({ showRevenue }) {
   const [mode, setMode] = useState('turnover');
   const [rows, setRows] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -38,7 +40,7 @@ function TopItems() {
   useEffect(() => {
     let live = true;
     setFailed(false);
-    api.get('/reports/top-items', { params: { period: 'this_month', by: mode === 'turnover' ? 'turnover' : 'revenue', limit: 10 } })
+    api.get('/reports/top-items', { params: { by: mode === 'turnover' ? 'turnover' : 'revenue', limit: 10 } })
       .then((r) => { if (live) setRows(Array.isArray(r.data) ? r.data : []); })
       .catch(() => { if (live) { setFailed(true); setRows((x) => x || []); } });
     return () => { live = false; };
@@ -53,7 +55,7 @@ function TopItems() {
         <h2 id="top-h" style={{ margin: 0, fontFamily: D, fontWeight: 600, fontSize: 17 }}>Top 10 items</h2>
         <span style={{ fontSize: 12, color: '#A9A497' }}>This month</span>
       </div>
-      <div role="group" aria-label="Rank by" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 10, background: '#1C1B18' }}>
+      {showRevenue && <div role="group" aria-label="Rank by" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 10, background: '#1C1B18' }}>
         {MODES.map((m) => {
           const on = m.id === mode;
           return (
@@ -63,7 +65,7 @@ function TopItems() {
             </button>
           );
         })}
-      </div>
+      </div>}
       <div aria-live="polite">
         {rows === null && <p className="sb-muted">Loading…</p>}
         {rows && rows.length === 0 && <p className="sb-muted">{failed ? 'Could not load rankings.' : 'No sales yet this month.'}</p>}
@@ -101,7 +103,7 @@ export default function Sidebar() {
   return (
     <aside className="sb" style={{ width: '100%', background: '#1C1B18', color: '#F4F2EC', fontFamily: "'IBM Plex Sans', system-ui, sans-serif", padding: '28px 18px 24px', display: 'flex', flexDirection: 'column', gap: 28, flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px' }}>
-        <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: D, fontWeight: 700, fontSize: 17 }}>{shopInitials(shop)}</div>
+        <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: D, fontWeight: 700, fontSize: 17 }}>{shopInitials(shop, settings.shopMark)}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ fontFamily: D, fontWeight: 700, fontSize: 18, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{shop}</span>
           <span style={{ fontSize: 12, color: '#A9A497' }}>Dry goods · Back office</span>
@@ -118,7 +120,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <TopItems />
+      <TopItems showRevenue={can(user, 'reports')} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, border: '1px solid #3A3833', textDecoration: 'none', color: '#F4F2EC' }}>

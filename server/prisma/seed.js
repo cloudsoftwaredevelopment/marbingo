@@ -45,7 +45,7 @@ async function main() {
   const now = new Date();
   await prisma.$executeRawUnsafe('TRUNCATE sale_lines, sales, stock_moves, items, categories, users, settings RESTART IDENTITY CASCADE');
 
-  await prisma.setting.create({ data: { key: 'shop_name', value: 'Marbingo' } });
+  await prisma.setting.createMany({ data: [{ key: 'shop_name', value: 'Marbingo' }, { key: 'shop_mark', value: 'MB' }] });
 
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const users = {};

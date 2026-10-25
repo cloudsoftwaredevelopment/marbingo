@@ -38,6 +38,8 @@ model User {
   employeeId   String    @unique @map("employee_id")
   passwordHash String    @map("password_hash")
   active       Boolean   @default(true)
+  /// Bumped on password change / deactivation to revoke existing tokens.
+  tokenVersion Int       @default(0) @map("token_version")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   itemsCreated Item[]
   sales        Sale[]

@@ -29,8 +29,7 @@ export function initials(first, last) {
   return (((first || '')[0] || '') + ((last || '')[0] || '')).toUpperCase() || '?';
 }
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export function longDate(iso) {
-  const d = new Date(iso);
-  return MON[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-}
+// Dates display in the shop's timezone regardless of the browser's.
+const dateFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+export const longDate = (iso) => dateFmt.format(new Date(iso)); // "Mar 4, 2024"
+

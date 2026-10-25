@@ -9,7 +9,7 @@ function readUser() {
 
 export function AuthProvider({ children }) {
   const [user, setUserState] = useState(readUser);
-  const [settings, setSettings] = useState({ shopName: 'Marbingo' });
+  const [settings, setSettings] = useState({ shopName: 'Marbingo', shopMark: 'MB' });
 
   const setUser = useCallback((u) => {
     setUserState(u);

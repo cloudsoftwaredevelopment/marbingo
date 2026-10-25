@@ -79,15 +79,20 @@ router.get('/mine', requireRole('MANAGER', 'CASHIER', 'AGENT'), wrap(async (req,
   const a = req.query.from ? parseIso(req.query.from) : today;
   const b = req.query.to ? parseIso(req.query.to) : a === null ? null : Math.max(a, today);
   if (a === null || b === null || b < a) return fail(res, 400, 'Choose a start date before the end date');
-  const sales = await prisma.sale.findMany({
-    where: { cashierId: req.user.id, soldAt: { gte: startOfDay(a), lt: startOfDay(b + 1) } },
-    include: { lines: { include: { item: true }, orderBy: { id: 'asc' } } },
-    orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
-    take: 200,
-  });
+  const where = { cashierId: req.user.id, soldAt: { gte: startOfDay(a), lt: startOfDay(b + 1) } };
+  // The list is capped; the summary is aggregated over the whole range.
+  const [sales, agg] = await Promise.all([
+    prisma.sale.findMany({
+      where,
+      include: { lines: { include: { item: true }, orderBy: { id: 'asc' } } },
+      orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
+      take: 200,
+    }),
+    prisma.sale.aggregate({ where, _count: true, _sum: { total: true } }),
+  ]);
   res.json({
     sales: sales.map(shapeSale),
-    summary: { count: sales.length, total: sales.reduce((n, s) => n + s.total, 0) },
+    summary: { count: agg._count, total: agg._sum.total || 0 },
   });
 }));
 

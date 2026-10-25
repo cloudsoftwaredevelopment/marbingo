@@ -7,8 +7,8 @@ const { fail, wrap, publicUser } = require('../lib/http');
 
 function tokens(user) {
   return {
-    accessToken: jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '8h' }),
-    refreshToken: jwt.sign({ sub: user.id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' })
+    accessToken: jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion }, process.env.JWT_SECRET, { expiresIn: '8h' }),
+    refreshToken: jwt.sign({ sub: user.id, tv: user.tokenVersion }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' })
   };
 }
 
@@ -26,6 +26,7 @@ router.post('/refresh', wrap(async (req, res) => {
     const payload = jwt.verify(String(req.body.refreshToken || ''), process.env.JWT_REFRESH_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) return fail(res, 401, 'Account not available.');
+    if ((payload.tv || 0) !== user.tokenVersion) return fail(res, 401, 'Session expired.');
     res.json(tokens(user));
   } catch {
     fail(res, 401, 'Session expired.');
@@ -35,3 +36,4 @@ router.post('/refresh', wrap(async (req, res) => {
 router.get('/me', authenticate, (req, res) => res.json({ user: publicUser(req.user) }));
 
 module.exports = router;
+module.exports.tokens = tokens;

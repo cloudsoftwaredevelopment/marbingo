@@ -2,11 +2,12 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { fail, wrap, publicUser } = require('../lib/http');
+const { fail, wrap, publicUser, EMAIL_RE, idParam } = require('../lib/http');
 
 const ROLES = ['MANAGER', 'INVENTORY', 'CASHIER', 'AGENT'];
 
 router.use(authenticate, requireRole('MANAGER'));
+router.param('id', idParam('User not found.'));
 
 router.get('/', wrap(async (req, res) => {
   const users = await prisma.user.findMany({ orderBy: { employeeId: 'asc' } });
@@ -28,7 +29,7 @@ router.post('/', wrap(async (req, res) => {
   const fields = {};
   if (!firstName) fields.firstName = 'Enter the first name.';
   if (!lastName) fields.lastName = 'Enter the last name.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.email = 'Enter a valid email address.';
+  if (!EMAIL_RE.test(email)) fields.email = 'Enter a valid email address.';
   if (!ROLES.includes(b.role)) fields.role = 'Choose a role.';
   if (password.length < 8) fields.password = 'Use at least 8 characters.';
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
@@ -48,7 +49,7 @@ router.post('/', wrap(async (req, res) => {
 }));
 
 router.put('/:id', wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = req.id;
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) return fail(res, 404, 'User not found.');
   const b = req.body;
@@ -78,6 +79,8 @@ router.put('/:id', wrap(async (req, res) => {
     if (data.active === false) return fail(res, 400, 'You cannot deactivate your own account.');
     if (data.role && data.role !== 'MANAGER') return fail(res, 400, 'You cannot change your own role.');
   }
+  // A password reset or deactivation revokes the user's existing sessions.
+  if (data.passwordHash || data.active === false) data.tokenVersion = { increment: 1 };
   const user = await prisma.user.update({ where: { id }, data });
   res.json({ user: publicUser(user) });
 }));

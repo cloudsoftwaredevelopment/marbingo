@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { fail, wrap } = require('../lib/http');
+const { fail, wrap, idParam } = require('../lib/http');
 
 const shape = (c) => ({ id: c.id, name: c.name, itemCount: c._count.items });
 const include = { _count: { select: { items: true } } };
@@ -20,6 +20,8 @@ async function duplicate(name, exceptId) {
   return found && found.id !== exceptId;
 }
 
+router.param('id', idParam('Category not found.'));
+
 const dupe = (res) => fail(res, 409, 'That category already exists.', { name: 'That category already exists.' });
 
 router.get('/', authenticate, wrap(async (req, res) => {
@@ -36,7 +38,7 @@ router.post('/', authenticate, requireRole('MANAGER'), wrap(async (req, res) => 
 }));
 
 router.put('/:id', authenticate, requireRole('MANAGER'), wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = req.id;
   const name = cleanName(req, res);
   if (!name) return;
   if (!(await prisma.category.findUnique({ where: { id } }))) return fail(res, 404, 'Category not found.');
@@ -46,7 +48,7 @@ router.put('/:id', authenticate, requireRole('MANAGER'), wrap(async (req, res) =
 }));
 
 router.delete('/:id', authenticate, requireRole('MANAGER'), wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = req.id;
   if (!(await prisma.category.findUnique({ where: { id } }))) return fail(res, 404, 'Category not found.');
   await prisma.category.delete({ where: { id } });
   res.json({ ok: true });

@@ -15,7 +15,7 @@ const norm = (i) => ({
   category: typeof i.category === 'string' ? i.category : i.category?.name || i.categoryName || ''
 });
 const listOf = (d) => (Array.isArray(d) ? d : d.items || []);
-const timeFmt = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+const timeFmt = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
 
 export default function Pos() {
   const { user } = useAuth();
@@ -77,11 +77,18 @@ export default function Pos() {
     if (first) add(first);
   }
 
-  const setQty = (id, v) => setCart((c) => c.map((l) => {
+  const setQty = (id, v) => setCart((c) => c.map((l) => (
+    l.id === id ? { ...l, qty: Math.max(1, Math.min(l.stock, v)), draft: undefined } : l
+  )));
+  // Typing keeps the raw text (so the field can be cleared); qty only changes on a valid number.
+  const typeQty = (id, v) => setCart((c) => c.map((l) => {
     if (l.id !== id) return l;
-    const n = Math.max(1, Math.min(l.stock, Math.floor(Number(v)) || 1));
-    return { ...l, qty: n };
+    const n = Math.floor(Number(v));
+    if (v === '' || !(n >= 1)) return { ...l, draft: v };
+    const q = Math.min(l.stock, n);
+    return { ...l, qty: q, draft: q === n ? v : String(q) };
   }));
+  const endTyping = (id) => setCart((c) => c.map((l) => (l.id === id ? { ...l, draft: undefined } : l)));
   const remove = (id) => setCart((c) => c.filter((l) => l.id !== id));
   const clear = () => { setCart([]); setErr(''); scanRef.current?.focus(); };
 
@@ -153,7 +160,7 @@ export default function Pos() {
                         <td>
                           <div className="stepper">
                             <button type="button" className="btn btn-secondary btn-icon" aria-label={`Decrease ${l.name}`} disabled={l.qty <= 1} onClick={() => setQty(l.id, l.qty - 1)}>−</button>
-                            <input type="number" className="input mono" aria-label={`Quantity of ${l.name}`} min="1" max={l.stock} value={l.qty} onChange={(e) => setQty(l.id, e.target.value)} />
+                            <input type="number" className="input mono" aria-label={`Quantity of ${l.name}`} min="1" max={l.stock} value={l.draft ?? l.qty} onChange={(e) => typeQty(l.id, e.target.value)} onBlur={() => endTyping(l.id)} />
                             <button type="button" className="btn btn-secondary btn-icon" aria-label={`Increase ${l.name}`} disabled={l.qty >= l.stock} onClick={() => setQty(l.id, l.qty + 1)}>+</button>
                           </div>
                         </td>

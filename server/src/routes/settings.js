@@ -3,22 +3,37 @@ const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap } = require('../lib/http');
 
-const KEY = 'shop_name';
+const NAME = 'shop_name';
+const MARK = 'shop_mark';
 
-async function shopName() {
-  const row = await prisma.setting.findUnique({ where: { key: KEY } });
-  return row ? row.value : 'Marbingo';
+// Fallback logo mark: initials of the first two words, or the first two letters.
+const deriveMark = (name) => {
+  const w = name.trim().split(/\s+/);
+  return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase();
+};
+
+async function read() {
+  const rows = await prisma.setting.findMany({ where: { key: { in: [NAME, MARK] } } });
+  const get = (k) => rows.find((r) => r.key === k)?.value;
+  const shopName = get(NAME) || 'Marbingo';
+  return { shopName, shopMark: get(MARK) || deriveMark(shopName) };
 }
 
-router.get('/', authenticate, wrap(async (req, res) => {
-  res.json({ shopName: await shopName() });
-}));
+const put = (key, value) => prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+
+router.get('/', authenticate, wrap(async (req, res) => res.json(await read())));
 
 router.put('/', authenticate, requireRole('MANAGER'), wrap(async (req, res) => {
   const name = String(req.body.shopName || '').trim();
-  if (!name) return fail(res, 400, 'Enter the shop name.', { shopName: 'Enter the shop name.' });
-  await prisma.setting.upsert({ where: { key: KEY }, update: { value: name }, create: { key: KEY, value: name } });
-  res.json({ shopName: name });
+  const mark = String(req.body.shopMark ?? '').trim().toUpperCase();
+  const fields = {};
+  if (!name) fields.shopName = 'Enter the shop name.';
+  if (mark.length > 3) fields.shopMark = 'Use up to 3 letters.';
+  if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
+  await put(NAME, name);
+  if (mark) await put(MARK, mark);
+  else await prisma.setting.deleteMany({ where: { key: MARK } });
+  res.json(await read());
 }));
 
 module.exports = router;

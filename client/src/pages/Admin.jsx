@@ -157,25 +157,32 @@ function Categories() {
 function Shop() {
   const { settings, refreshSettings } = useAuth();
   const [name, setName] = useState(settings?.shopName || '');
+  const [mark, setMark] = useState(settings?.shopMark || '');
   const [msg, setMsg] = useState({ text: '', ok: true });
   useEffect(() => { if (settings?.shopName) setName(settings.shopName); }, [settings?.shopName]);
+  useEffect(() => { if (settings?.shopMark) setMark(settings.shopMark); }, [settings?.shopMark]);
 
   async function save(e) {
     e.preventDefault();
     setMsg({ text: '', ok: true });
     try {
-      await api.put('/settings', { shopName: name.trim() });
+      await api.put('/settings', { shopName: name.trim(), shopMark: mark.trim() });
       await refreshSettings();
       setMsg({ text: 'Saved.', ok: true });
     } catch (er) {
       const x = apiError(er);
-      setMsg({ text: x.fields.shopName || x.message, ok: false });
+      setMsg({ text: x.fields.shopName || x.fields.shopMark || x.message, ok: false });
     }
   }
   return (
     <form className="card" onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 520 }}>
       <h2 className="h2">Shop</h2>
       <div className="field"><label htmlFor="shop">Shop name</label><input id="shop" className="input" value={name} onChange={(e) => { setName(e.target.value); setMsg({ text: '', ok: true }); }} required /></div>
+      <div className="field">
+        <label htmlFor="mark">Logo letters</label>
+        <input id="mark" className="input mono" value={mark} maxLength={3} aria-describedby="mark-hint" style={{ maxWidth: 120, textTransform: 'uppercase' }} onChange={(e) => { setMark(e.target.value); setMsg({ text: '', ok: true }); }} />
+        <span id="mark-hint" className="hint">Up to 3 letters for the logo square. Leave blank to use the shop name’s initials.</span>
+      </div>
       <div className="actions">
         {msg.text && <span role="status" className={msg.ok ? 'status-ok' : 'status-err'}>{msg.text}</span>}
         <button type="submit" className="btn btn-primary">Save</button>

@@ -33,7 +33,8 @@ app.use((err, req, res, next) => {
   if (err.code === 'P2002') return res.status(409).json({ error: 'That value is already in use.' });
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image must be 8 MB or smaller.' });
   console.error(err);
-  res.status(err.status || 500).json({ error: err.expose ? err.message : 'Something went wrong.' });
+  if (err.expose) return res.status(err.status || 400).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  res.status(err.status || 500).json({ error: 'Something went wrong.' });
 });
 
 const port = process.env.PORT || 5003;

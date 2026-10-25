@@ -50,13 +50,20 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
     range: { label: p.label, from: p.fromDate, to: p.toDate },
     unit: p.unit,
     totals: { gross, transactions, units, average: transactions ? Math.round(gross / transactions) : 0 },
-    buckets: p.buckets.map((b, i) => ({ label: b.label, value: values[i], upcoming: b.upcoming })),
+    buckets: p.buckets
+      .map((b, i) => ({ label: b.label, value: values[i], upcoming: b.upcoming, offHours: b.offHours }))
+      .filter((b) => !b.offHours || b.value > 0)
+      .map(({ offHours, ...b }) => b),
     items: rows.map((r) => ({ id: r.id, name: r.name, category: r.category, units: r.units, revenue: r.revenue })),
   });
 }));
 
+// Revenue figures are limited to roles that can see the Sales report; others get turnover only.
 router.get('/top-items', wrap(async (req, res) => {
   const by = req.query.by === 'revenue' ? 'revenue' : 'turnover';
+  if (by === 'revenue' && !['MANAGER', 'INVENTORY'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'You do not have access to this.' });
+  }
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
   const now = new Date();
   const p = resolvePeriod('month', {}, now);

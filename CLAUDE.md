@@ -20,7 +20,11 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 - Money is **integer centavos** everywhere (DB, API). Client formats with `lib/format.js` (`pesoWhole` reports, `peso` prices).
 - Shop timezone **Asia/Manila**; all period/bucket logic lives in `server/src/lib/periods.js` (weeks start Monday). The server resolves presets.
 - Every stock change writes a `stock_moves` row; `qty_on_hand` must equal the sum of moves. Turnover = units ÷ ((opening+closing)/2) from the ledger (`lib/turnover.js`).
-- Errors: `{ error, fields? }`. Helpers in `server/src/lib/http.js`.
+- Errors: `{ error, fields? }`. Helpers in `server/src/lib/http.js` (`idParam` for `:id` routes, `EMAIL_RE`). Image uploads go through `server/src/lib/upload.js` (rejects non JPG/PNG/WEBP with 400).
+- Stock decrements use a conditional `updateMany where qtyOnHand gte` — never read-then-write.
+- Sessions: `users.token_version` is in every JWT; bump it to revoke sessions (password change, reset, deactivation).
+- "Today" chart has `Before 7a` / `After 7p` buckets, shown only when they have sales, so bars always sum to Gross sales.
+- Client shows times/dates in Asia/Manila explicitly (`timeZone` option), never browser-local.
 - Roles: MANAGER, INVENTORY, CASHIER, AGENT. Server: `requireRole()`; client mirror: `client/src/lib/roles.js`.
 - Styling: tokens in `client/src/styles/tokens.css`, shared classes in `global.css`.
 
@@ -30,7 +34,8 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 | Sales report | ✅ | ✅ | | |
 | Add item / restock | ✅ | ✅ | | |
 | Record sale | ✅ | | ✅ counter | ✅ field |
-| Admin (users, categories, shop name) | ✅ | | | |
+| Top 10 sidebar | turnover + revenue | turnover + revenue | turnover only | turnover only |
+| Admin (users, categories, shop name + logo letters) | ✅ | | | |
 
 ## Demo logins (password `marbingo123`)
 maria@ (Manager) · jose@ (Inventory) · ana@ (Cashier) · ramon@ (Agent) — all `@marbingo.test`.

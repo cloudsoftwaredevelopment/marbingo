@@ -10,6 +10,7 @@ async function authenticate(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) return res.status(401).json({ error: 'Account not available.' });
+    if ((payload.tv || 0) !== user.tokenVersion) return res.status(401).json({ error: 'Session expired.' });
     req.user = user;
     next();
   } catch {

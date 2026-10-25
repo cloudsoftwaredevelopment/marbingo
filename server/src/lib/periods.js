@@ -4,6 +4,8 @@ const DAY = 86400000;
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const RANGE_ERROR = 'Choose a start date before the end date';
+const MAX_DAYS = 366;
+const LENGTH_ERROR = `Choose a range of ${MAX_DAYS} days or less`;
 
 // A "local day number" = days since epoch of the Manila calendar date.
 const dayOf = (instant) => Math.floor((instant.getTime() + OFFSET_MS) / DAY);
@@ -59,12 +61,15 @@ function resolvePeriod(preset, { from, to } = {}, now = new Date()) {
     label = `${DOW[f.dow]}, ${MON[f.m]} ${f.d}, ${f.y}`;
     unit = 'By hour';
     bucket = 'hour';
-    buckets = [];
+    // Store hours 7a–6p, plus off-hours buckets so the bars always add up to the day's total.
+    // offHours buckets are dropped by the report when they have no sales.
+    const at = (h) => new Date(startOfDay(today).getTime() + h * 3600000);
+    buckets = [{ label: 'Before 7a', start: at(0), end: at(7), offHours: true }];
     for (let h = 7; h < 19; h++) {
-      const start = new Date(startOfDay(today).getTime() + h * 3600000);
       const hr = h % 12 === 0 ? 12 : h % 12;
-      buckets.push({ label: hr + (h < 12 ? 'a' : 'p'), start, end: new Date(start.getTime() + 3600000) });
+      buckets.push({ label: hr + (h < 12 ? 'a' : 'p'), start: at(h), end: at(h + 1) });
     }
+    buckets.push({ label: 'After 7p', start: at(19), end: at(24), offHours: true });
   } else if (preset === 'week') {
     a = today - ((fields(today).dow + 6) % 7);
     b = a + 6;
@@ -78,8 +83,9 @@ function resolvePeriod(preset, { from, to } = {}, now = new Date()) {
   } else if (preset === 'custom') {
     const pa = parseIso(from), pb = parseIso(to);
     if (pa === null || pb === null || pb < pa) return { error: RANGE_ERROR };
+    if (pb - pa + 1 > MAX_DAYS) return { error: LENGTH_ERROR };
     a = pa;
-    b = Math.min(pb, pa + 365);
+    b = pb;
     const fa = fields(a), fb = fields(b);
     label = `${md(a)}, ${fa.y} – ${md(b)}, ${fb.y}`;
     unit = 'By week';
@@ -108,4 +114,4 @@ function bucketIndex(buckets, instant) {
   return buckets.findIndex((x) => t >= x.start.getTime() && t < x.end.getTime());
 }
 
-module.exports = { resolvePeriod, bucketIndex, parseIso, dayOf, startOfDay, RANGE_ERROR };
+module.exports = { resolvePeriod, bucketIndex, parseIso, dayOf, startOfDay, RANGE_ERROR, LENGTH_ERROR };
