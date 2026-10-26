@@ -1,5 +1,7 @@
 # Marbingo — Dry Goods Back Office
 
+> **Keep this file under 300 lines.** When adding to it, summarise and link to `docs/` (API contracts, detailed notes) instead of pasting detail; trim stale sections rather than appending.
+
 Back-office dashboard for a dry goods shop: sales report, add item, record sale (POS), field orders, stores, profile, admin — plus **Marbingo Field**, a native Android app (`android/`) agents use offline to take orders at stores.
 Field orders API contract: `docs/field-api.md` (shared by server, web and Android).
 Spec: `HANDOFF.md` (wins over designs). Visual reference: `design/*.dc.html` (design-tool files — never ship).
