@@ -15,12 +15,26 @@ import ph.marbingo.field.sync.SyncTrigger
 import retrofit2.HttpException
 import java.io.IOException
 
+/** Side effects the data layer owes the tracking feature around the session. */
+interface AuthHooks {
+    suspend fun afterSignIn()
+    suspend fun beforeSignOut()
+    suspend fun afterSignOut()
+
+    object None : AuthHooks {
+        override suspend fun afterSignIn() {}
+        override suspend fun beforeSignOut() {}
+        override suspend fun afterSignOut() {}
+    }
+}
+
 class AuthRepositoryImpl(
     private val api: MarbingoApi,
     private val tokens: PrefsTokenStore,
     private val db: AppDatabase,
     private val engine: SyncEngine,
     private val trigger: SyncTrigger,
+    private val hooks: AuthHooks = AuthHooks.None,
 ) : AuthRepository {
 
     override val session: Flow<Session?> =
@@ -71,6 +85,7 @@ class AuthRepositoryImpl(
         trigger.start()
         // First full sync inline so the catalog is ready; failures are fine, the worker retries.
         try { engine.run() } catch (_: Exception) {}
+        try { hooks.afterSignIn() } catch (_: Exception) {}
         return currentSession() ?: throw UserFacingException("Couldn't sign in. Try again.")
     }
 
@@ -80,9 +95,11 @@ class AuthRepositoryImpl(
             if (waiting > 0) return false
         }
         trigger.cancelAll()
+        try { hooks.beforeSignOut() } catch (_: Exception) {}
         withContext(Dispatchers.IO) { db.clearAllTables() }
         tokens.dataOwnerId = null
         tokens.clear()
+        try { hooks.afterSignOut() } catch (_: Exception) {}
         return true
     }
 }

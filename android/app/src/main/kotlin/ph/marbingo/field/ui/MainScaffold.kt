@@ -125,7 +125,7 @@ fun MainScaffold(
 @Composable
 fun DetailScaffold(
     title: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     maxWidth: Int = MAX_CONTENT_DP,
     actions: @Composable RowScope.() -> Unit = {},
@@ -140,7 +140,7 @@ fun DetailScaffold(
             TopAppBar(
                 title = { Text(title, style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

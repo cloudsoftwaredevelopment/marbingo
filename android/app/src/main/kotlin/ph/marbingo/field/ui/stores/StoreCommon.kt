@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ph.marbingo.field.data.GeoFix
 import ph.marbingo.field.data.Store
 import ph.marbingo.field.data.StoreRepository
 import ph.marbingo.field.ui.*
@@ -29,8 +31,12 @@ data class StoreDraft(
     val phone: String = "",
     val address: String = "",
     val notes: String = "",
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val accuracy: Double? = null,
 ) {
     val valid get() = name.isNotBlank()
+    val hasLocation get() = lat != null && lng != null
 }
 
 /** Shared by the Stores screen and the New order flow. */
@@ -54,6 +60,7 @@ class StoreCreator(private val repo: StoreRepository, private val scope: Corouti
                     d.phone.trim().ifEmpty { null },
                     d.address.trim().ifEmpty { null },
                     d.notes.trim().ifEmpty { null },
+                    d.lat, d.lng, d.accuracy,
                 )
                 _saving.value = false
                 onCreated(id)
@@ -106,6 +113,11 @@ fun AddStoreDialog(
                     singleLine = false, minLines = 2,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
+                LocationPicker(
+                    fix = draft.takeIf { it.hasLocation }?.let { GeoFix(it.lat!!, it.lng!!, it.accuracy) },
+                    onFix = { f -> draft = draft.copy(lat = f?.lat, lng = f?.lng, accuracy = f?.accuracy) },
+                    autoStart = true,
+                )
                 error?.let { ErrorBanner(it) }
             }
         },
@@ -120,8 +132,63 @@ fun AddStoreDialog(
     )
 }
 
+/**
+ * "Use my current location" for the Add store form. When location permission is already granted it fetches a fix on its own;
+ * the agent can clear it. Shows "±12 m" accuracy.
+ */
 @Composable
-fun StoreRow(s: Store, onClick: () -> Unit, trailing: @Composable (() -> Unit)? = null) {
+fun LocationPicker(fix: GeoFix?, onFix: (GeoFix?) -> Unit, autoStart: Boolean) {
+    val locator = LocalDeps.current.locator
+    val scope = rememberCoroutineScope()
+    var locating by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    var cleared by remember { mutableStateOf(false) } // don't re-fill automatically after the agent cleared it
+
+    fun fetch() {
+        if (locating) return
+        locating = true; failed = false; cleared = false
+        scope.launch {
+            val f = locator.currentFix()
+            locating = false
+            if (f == null) failed = true else onFix(f)
+        }
+    }
+    val request = rememberLocationPermission { granted -> if (granted) fetch() else failed = true }
+    LaunchedEffect(Unit) { if (autoStart && fix == null && !cleared && locator.hasPermission()) fetch() }
+
+    Surface(Modifier.fillMaxWidth(), shape = ph.marbingo.field.ui.theme.MbShapes.Control, color = Mb.Ground) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Location", style = MaterialTheme.typography.labelLarge, color = Mb.Muted)
+            when {
+                locating -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Mb.Accent)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Getting your location…", style = MaterialTheme.typography.bodyMedium)
+                }
+                fix != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Chip("Location set" + (Fmt.accuracy(fix.accuracy)?.let { " · $it" } ?: ""), Tone.Good)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { cleared = true; onFix(null) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear") }
+                }
+                else -> {
+                    SecondaryButton("Use my current location", { request() }, Modifier.fillMaxWidth())
+                    if (failed) Text(
+                        "Couldn't get a GPS fix. Check that location is on, or try again outdoors. You can also save the store without it.",
+                        style = MaterialTheme.typography.bodySmall, color = Mb.Warn,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StoreRow(
+    s: Store,
+    onClick: () -> Unit,
+    trailing: @Composable (() -> Unit)? = null,
+    showLocationChip: Boolean = false,
+) {
     androidx.compose.material3.Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -135,6 +202,7 @@ fun StoreRow(s: Store, onClick: () -> Unit, trailing: @Composable (() -> Unit)? 
                 val sub = listOfNotNull(s.ownerName, s.address).joinToString(" · ")
                 if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
             }
+            if (showLocationChip && !s.hasLocation) { Spacer(Modifier.width(8.dp)); Chip("No location", Tone.Neutral) }
             if (s.pendingSync) { Spacer(Modifier.width(8.dp)); Chip("Not synced yet", Tone.Warn) }
             trailing?.invoke()
         }

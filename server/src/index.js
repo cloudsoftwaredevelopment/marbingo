@@ -22,6 +22,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/sync', require('./routes/sync'));
+app.use('/api/tracking', require('./routes/tracking'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
@@ -42,3 +43,4 @@ app.use((err, req, res, next) => {
 
 const port = process.env.PORT || 5003;
 app.listen(port, () => console.log(`marbingo server on :${port}`));
+require('./jobs/retention').start();

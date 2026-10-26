@@ -42,6 +42,9 @@ object Fmt {
         }
     }
 
+    /** 12.4 -> "±12 m". */
+    fun accuracy(metres: Double?): String? = metres?.let { "±${Math.round(it)} m" }
+
     fun plural(n: Int, one: String, many: String = one + "s") = if (n == 1) "$n $one" else "$n $many"
 }
 

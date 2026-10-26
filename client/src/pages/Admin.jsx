@@ -5,7 +5,7 @@ import { ROLE_LABELS } from '../lib/format';
 import '../styles/forms.css';
 
 const ROLES = ['MANAGER', 'INVENTORY', 'CASHIER', 'AGENT'];
-const TABS = [['users', 'Users'], ['categories', 'Categories'], ['shop', 'Shop']];
+const TABS = [['users', 'Users'], ['categories', 'Categories'], ['shop', 'Shop'], ['tracking', 'Tracking']];
 
 function Users() {
   const { user: me } = useAuth();
@@ -191,6 +191,52 @@ function Shop() {
   );
 }
 
+const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']];
+
+function Tracking() {
+  const [sch, setSch] = useState(null);
+  const [msg, setMsg] = useState({ text: '', ok: true });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get('/settings/tracking-schedule').then((r) => setSch(r.data)).catch((e) => setMsg({ text: apiError(e).message, ok: false }));
+  }, []);
+  const edit = (p) => { setSch((s) => ({ ...s, ...p })); setMsg({ text: '', ok: true }); };
+  const toggle = (d) => edit({ days: sch.days.includes(d) ? sch.days.filter((x) => x !== d) : [...sch.days, d].sort() });
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const { data } = await api.put('/settings/tracking-schedule', { days: sch.days, start: sch.start, end: sch.end });
+      setSch(data);
+      setMsg({ text: 'Saved.', ok: true });
+    } catch (er) {
+      const x = apiError(er);
+      setMsg({ text: Object.values(x.fields)[0] || x.message, ok: false });
+    } finally { setBusy(false); }
+  }
+
+  if (!sch) return <div className="card">{msg.text ? <div role="alert" className="banner-err">{msg.text}</div> : <p className="empty">Loading schedule…</p>}</div>;
+  return (
+    <form className="card" onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+      <h2 className="h2">Work schedule</h2>
+      <p className="page-sub" style={{ margin: 0 }}>Field agents' tablets share their location only during these hours. Location history is kept for 12 months.</p>
+      <div role="group" aria-label="Working days" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {DAYS.map(([d, l]) => <button key={d} type="button" className="pill" aria-pressed={sch.days.includes(d)} onClick={() => toggle(d)}>{l}</button>)}
+      </div>
+      <div className="grid-fit" style={{ '--min': '140px', maxWidth: 360 }}>
+        <div className="field"><label htmlFor="ts-start">Start</label><input id="ts-start" type="time" className="input mono" value={sch.start} onChange={(e) => edit({ start: e.target.value })} required /></div>
+        <div className="field"><label htmlFor="ts-end">End</label><input id="ts-end" type="time" className="input mono" value={sch.end} onChange={(e) => edit({ end: e.target.value })} required /></div>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>Times are Asia/Manila.</p>
+      <div className="actions">
+        {msg.text && <span role="status" className={msg.ok ? 'status-ok' : 'status-err'}>{msg.text}</span>}
+        <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save schedule'}</button>
+      </div>
+    </form>
+  );
+}
+
 export default function Admin() {
   const [tab, setTab] = useState('users');
   return (
@@ -205,6 +251,7 @@ export default function Admin() {
       {tab === 'users' && <Users />}
       {tab === 'categories' && <Categories />}
       {tab === 'shop' && <Shop />}
+      {tab === 'tracking' && <Tracking />}
     </div>
   );
 }

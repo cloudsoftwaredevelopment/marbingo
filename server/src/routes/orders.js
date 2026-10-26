@@ -4,7 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap, idParam } = require('../lib/http');
 const { parseIso, startOfDay } = require('../lib/periods');
 const {
-  priceLine, mergeLines, deliveryQuantities, parseDate, orderInclude, shapeOrder,
+  priceLine, mergeLines, parseLocation, deliveryQuantities, parseDate, orderInclude, shapeOrder,
 } = require('../lib/orders');
 
 router.param('id', idParam('Order not found.'));
@@ -28,7 +28,9 @@ async function upsertCustomers(list, user) {
     const name = text(c && c.name);
     if (!clientUuid || !name) continue;
     const data = { name, ownerName: text(c.ownerName), phone: text(c.phone), address: text(c.address), notes: text(c.notes) };
+    const loc = parseLocation(c, user).data;
     let row = await prisma.customer.findUnique({ where: { clientUuid } });
+    if (loc) Object.assign(data, row && row.lat === loc.lat && row.lng === loc.lng ? {} : loc);
     if (!row) {
       try {
         row = await prisma.customer.create({ data: { ...data, clientUuid, createdById: user.id } });

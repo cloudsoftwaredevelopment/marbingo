@@ -48,6 +48,12 @@ data class CustomerDto(
     val active: Boolean,
     val createdAt: String?,
     val updatedAt: String?,
+    // Store location (docs/tracking-api.md). Nullable with defaults so older servers still parse.
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val locationSource: String? = null, // gps | manual | null
+    val locationAccuracy: Double? = null,
+    val locatedAt: String? = null,
 )
 
 data class CustomerRefDto(val id: Int, val clientUuid: String, val name: String)
@@ -87,6 +93,8 @@ data class SyncPullResponse(
     val categories: List<CategoryDto>,
     val customers: List<CustomerDto>,
     val orders: List<OrderDto>,
+    val trackingSchedule: TrackingScheduleDto? = null,
+    val trackingConsentAt: String? = null,
 )
 
 data class CustomerInput(
@@ -96,7 +104,32 @@ data class CustomerInput(
     val phone: String? = null,
     val address: String? = null,
     val notes: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val locationAccuracy: Double? = null,
 )
+
+/** PUT /api/customers/:id: only the location fields, sent when the agent fixes an existing store's pin. */
+data class CustomerLocationInput(val lat: Double, val lng: Double, val locationAccuracy: Double? = null)
+
+// ---- Work-hours tracking (docs/tracking-api.md) ----
+
+/** days are ISO weekdays (1 = Mon … 7 = Sun); start/end are Manila "HH:MM". */
+data class TrackingScheduleDto(val days: List<Int>, val start: String, val end: String)
+
+data class TrackingPointDto(
+    val recordedAt: String,
+    val lat: Double,
+    val lng: Double,
+    val accuracy: Double? = null,
+    val speed: Double? = null,
+    val bearing: Double? = null,
+    val battery: Int? = null,
+)
+
+data class TrackingPointsRequest(val points: List<TrackingPointDto>)
+data class TrackingPointsResponse(val accepted: Int = 0, val duplicates: Int = 0, val rejected: Int = 0)
+data class ConsentResponse(val trackingConsentAt: String? = null)
 
 data class OrderLineInput(val itemId: Int, val qty: Int)
 

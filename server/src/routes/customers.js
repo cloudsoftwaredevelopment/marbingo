@@ -2,7 +2,7 @@ const router = require('express').Router();
 const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap, idParam } = require('../lib/http');
-const { orderInclude, shapeOrder, shapeCustomer } = require('../lib/orders');
+const { orderInclude, shapeOrder, shapeCustomer, parseLocation } = require('../lib/orders');
 
 router.param('id', idParam('Store not found.'));
 router.use(authenticate, requireRole('MANAGER', 'INVENTORY', 'AGENT'));
@@ -10,7 +10,7 @@ router.use(authenticate, requireRole('MANAGER', 'INVENTORY', 'AGENT'));
 const TEXT = ['ownerName', 'phone', 'address', 'notes'];
 
 // Validates store fields; with partial=true only supplied fields are checked.
-function parse(b, partial) {
+function parse(b, partial, user) {
   const fields = {};
   const data = {};
   if (!partial || b.name !== undefined) {
@@ -20,6 +20,9 @@ function parse(b, partial) {
   }
   for (const k of TEXT) if (b[k] !== undefined) data[k] = String(b[k] === null ? '' : b[k]).trim() || null;
   if (partial && b.active !== undefined) data.active = Boolean(b.active);
+  const loc = parseLocation(b, user);
+  if (loc.error) Object.assign(fields, loc.fields);
+  else if (loc.data) Object.assign(data, loc.data);
   return { fields, data };
 }
 
@@ -41,6 +44,8 @@ router.get('/', wrap(async (req, res) => {
   if (q) {
     where.OR = ['name', 'ownerName', 'phone', 'address'].map((k) => ({ [k]: { contains: q, mode: 'insensitive' } }));
   }
+  if (req.query.located === '1') where.lat = { not: null };
+  else if (req.query.located === '0') where.lat = null;
   const customers = await prisma.customer.findMany({ where, orderBy: { name: 'asc' } });
   const t = await totalsFor(customers.map((c) => c.id));
   res.json(customers.map((c) => ({
@@ -75,7 +80,7 @@ router.post('/', wrap(async (req, res) => {
     const existing = await prisma.customer.findUnique({ where: { clientUuid } });
     if (existing) return res.json({ customer: shapeCustomer(existing) });
   }
-  const { fields, data } = parse(b, false);
+  const { fields, data } = parse(b, false, req.user);
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
   try {
     const customer = await prisma.customer.create({ data: { ...data, clientUuid, createdById: req.user.id } });
@@ -95,9 +100,21 @@ router.put('/:id', wrap(async (req, res) => {
   if (req.user.role === 'AGENT' && existing.createdById !== req.user.id) {
     return fail(res, 403, 'You do not have access to this.');
   }
-  const { fields, data } = parse(req.body || {}, true);
+  const { fields, data } = parse(req.body || {}, true, req.user);
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
   const customer = await prisma.customer.update({ where: { id: req.id }, data });
+  res.json({ customer: shapeCustomer(customer) });
+}));
+
+router.put('/:id/location', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) => {
+  const b = req.body || {};
+  if (b.lat === undefined || b.lng === undefined || b.lat === null || b.lng === null) {
+    return fail(res, 400, 'Check the highlighted fields.', { lat: 'Enter the latitude.', lng: 'Enter the longitude.' });
+  }
+  const loc = parseLocation({ lat: b.lat, lng: b.lng }, req.user);
+  if (loc.error) return fail(res, 400, loc.error, loc.fields);
+  if (!(await prisma.customer.findUnique({ where: { id: req.id }, select: { id: true } }))) return fail(res, 404, 'Store not found.');
+  const customer = await prisma.customer.update({ where: { id: req.id }, data: loc.data });
   res.json({ customer: shapeCustomer(customer) });
 }));
 

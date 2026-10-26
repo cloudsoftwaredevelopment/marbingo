@@ -30,3 +30,19 @@ fun rememberBluetoothPermission(onResult: (Boolean) -> Unit): () -> Unit {
         }
     }
 }
+
+/** Returns a function that makes sure precise location is held (asking if needed) and reports the result. */
+@Composable
+fun rememberLocationPermission(onResult: (Boolean) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val callback by rememberUpdatedState(onResult)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        callback(it[Manifest.permission.ACCESS_FINE_LOCATION] == true)
+    }
+    return remember(context) {
+        {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) callback(true)
+            else launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
+}

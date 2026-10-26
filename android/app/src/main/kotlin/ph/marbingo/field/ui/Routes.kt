@@ -9,6 +9,7 @@ object Routes {
     const val ORDERS = "orders"
     const val SETTINGS = "settings"
     const val SCAN = "scan"
+    const val TRACKING_SETUP = "tracking-setup?forced={forced}"
 
     const val NEW_ORDER = "neworder?store={store}"
     const val STORE = "store/{uuid}"
@@ -18,6 +19,7 @@ object Routes {
     const val SCAN_RESULT_KEY = "scanned_code"
 
     fun newOrder(storeUuid: String? = null) = if (storeUuid == null) "neworder" else "neworder?store=${Uri.encode(storeUuid)}"
+    fun trackingSetup(forced: Boolean = false) = "tracking-setup?forced=$forced"
     fun store(uuid: String) = "store/${Uri.encode(uuid)}"
     fun order(uuid: String) = "order/${Uri.encode(uuid)}"
     fun receipt(uuid: String) = "receipt/${Uri.encode(uuid)}"

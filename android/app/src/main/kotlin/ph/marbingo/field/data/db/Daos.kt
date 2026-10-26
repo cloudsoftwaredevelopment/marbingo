@@ -36,6 +36,8 @@ interface CustomerDao {
     @Query("UPDATE customers SET serverId = :serverId, dirty = 0 WHERE clientUuid = :uuid")
     suspend fun markSynced(uuid: String, serverId: Int)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(c: CustomerEntity)
+    @Query("UPDATE customers SET lat = :lat, lng = :lng, locationAccuracy = :accuracy, locationSource = 'device', dirty = 1, updatedAt = :now WHERE clientUuid = :uuid")
+    suspend fun setDeviceLocation(uuid: String, lat: Double, lng: Double, accuracy: Double?, now: Long)
 }
 
 @Dao
@@ -78,4 +80,39 @@ interface SyncMetaDao {
     @Query("SELECT * FROM sync_meta WHERE id = 1") fun observe(): Flow<SyncMetaEntity?>
     @Query("SELECT * FROM sync_meta WHERE id = 1") suspend fun get(): SyncMetaEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(m: SyncMetaEntity)
+}
+
+@Dao
+interface LocationPointDao {
+    /** Returns -1 when a fix with the same recordedAt is already stored. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(p: LocationPointEntity): Long
+    @Query("SELECT * FROM location_points WHERE uploaded = 0 ORDER BY recordedAt LIMIT :limit")
+    suspend fun pending(limit: Int): List<LocationPointEntity>
+    @Query("SELECT COUNT(*) FROM location_points WHERE uploaded = 0") fun pendingCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM location_points WHERE uploaded = 0") suspend fun pendingCountNow(): Int
+    @Query("UPDATE location_points SET uploaded = 1 WHERE id IN (:ids)") suspend fun markUploaded(ids: List<Long>)
+    @Query("DELETE FROM location_points WHERE uploaded = 1 AND recordedAt < :before") suspend fun pruneUploaded(before: Long): Int
+    @Query("SELECT COUNT(*) FROM location_points") suspend fun total(): Int
+}
+
+@Dao
+interface TrackingMetaDao {
+    @Query("SELECT * FROM tracking_meta WHERE id = 1") fun observe(): Flow<TrackingMetaEntity?>
+    @Query("SELECT * FROM tracking_meta WHERE id = 1") suspend fun get(): TrackingMetaEntity?
+    @Query("INSERT OR IGNORE INTO tracking_meta (id, consentSynced) VALUES (1, 0)") suspend fun ensureRow()
+
+    @Query("UPDATE tracking_meta SET scheduleDays = :days, scheduleStart = :start, scheduleEnd = :end WHERE id = 1")
+    suspend fun updateSchedule(days: String, start: String, end: String)
+    @Query("UPDATE tracking_meta SET consentAt = :at, consentSynced = :synced WHERE id = 1")
+    suspend fun updateConsent(at: Long?, synced: Boolean)
+    @Query("UPDATE tracking_meta SET consentSynced = 1 WHERE id = 1") suspend fun markConsentSynced()
+    @Query("UPDATE tracking_meta SET lastFixAt = :at WHERE id = 1") suspend fun updateLastFix(at: Long)
+    @Query("UPDATE tracking_meta SET lastUploadAt = :at, lastError = NULL WHERE id = 1") suspend fun updateLastUpload(at: Long)
+    @Query("UPDATE tracking_meta SET lastError = :error WHERE id = 1") suspend fun updateError(error: String?)
+
+    suspend fun saveSchedule(days: String, start: String, end: String) { ensureRow(); updateSchedule(days, start, end) }
+    suspend fun saveConsent(at: Long?, synced: Boolean) { ensureRow(); updateConsent(at, synced) }
+    suspend fun saveLastFix(at: Long) { ensureRow(); updateLastFix(at) }
+    suspend fun saveLastUpload(at: Long) { ensureRow(); updateLastUpload(at) }
+    suspend fun saveError(error: String?) { ensureRow(); updateError(error) }
 }

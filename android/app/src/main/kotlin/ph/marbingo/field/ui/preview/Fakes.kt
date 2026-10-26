@@ -2,6 +2,8 @@ package ph.marbingo.field.ui.preview
 
 import kotlinx.coroutines.flow.*
 import ph.marbingo.field.data.*
+import ph.marbingo.field.tracking.TrackingRepository
+import ph.marbingo.field.tracking.TrackingState
 import ph.marbingo.field.ui.UiDeps
 import java.util.UUID
 
@@ -47,10 +49,16 @@ class FakeStores(initial: List<Store> = listOf(Sample.store)) : StoreRepository 
     override fun search(query: String): Flow<List<Store>> =
         all.map { l -> l.filter { query.isBlank() || it.name.contains(query, true) || it.ownerName?.contains(query, true) == true } }
     override fun observe(clientUuid: String): Flow<Store?> = all.map { l -> l.firstOrNull { it.clientUuid == clientUuid } }
-    override suspend fun create(name: String, ownerName: String?, phone: String?, address: String?, notes: String?): String {
+    override suspend fun create(
+        name: String, ownerName: String?, phone: String?, address: String?, notes: String?,
+        lat: Double?, lng: Double?, locationAccuracy: Double?,
+    ): String {
         val id = UUID.randomUUID().toString()
-        all.value = all.value + Store(id, null, name, ownerName, phone, address, notes, true)
+        all.value = all.value + Store(id, null, name, ownerName, phone, address, notes, true, lat, lng, locationAccuracy)
         return id
+    }
+    override suspend fun setLocation(clientUuid: String, fix: GeoFix) {
+        all.value = all.value.map { if (it.clientUuid == clientUuid) it.copy(lat = fix.lat, lng = fix.lng, locationAccuracy = fix.accuracy, pendingSync = true) else it }
     }
 }
 
@@ -93,6 +101,24 @@ class FakePrinter : PrinterRepository {
     override suspend fun printTest(session: Session) { error?.let { throw it }; printed++ }
 }
 
+class FakeTracking(initial: TrackingState = TrackingState.Ready) : TrackingRepository {
+    val current = MutableStateFlow(initial)
+    var consentCalls = 0
+    var ensureCalls = 0
+    var refreshCalls = 0
+    override val state: Flow<TrackingState> = current
+    override suspend fun giveConsent() { consentCalls++; current.value = current.value.copy(consentGiven = true) }
+    override suspend fun refreshSchedule() { refreshCalls++ }
+    override fun refreshPermissions() {}
+    override suspend fun ensureScheduled() { ensureCalls++ }
+}
+
+class FakeLocator(var fix: GeoFix? = GeoFix(10.7202, 122.5621, 12.0), var permitted: Boolean = true) : DeviceLocator {
+    var calls = 0
+    override fun hasPermission() = permitted
+    override suspend fun currentFix(timeoutMs: Long): GeoFix? { calls++; return if (permitted) fix else null }
+}
+
 class FakeDeps(
     override val auth: FakeAuth = FakeAuth(),
     override val catalog: FakeCatalog = FakeCatalog(),
@@ -100,4 +126,6 @@ class FakeDeps(
     override val orders: FakeOrders = FakeOrders(stores),
     override val sync: FakeSync = FakeSync(),
     override val printer: FakePrinter = FakePrinter(),
+    override val tracking: FakeTracking = FakeTracking(),
+    override val locator: FakeLocator = FakeLocator(),
 ) : UiDeps

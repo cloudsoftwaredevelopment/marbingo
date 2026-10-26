@@ -11,7 +11,10 @@ class StoreRepositoryImpl(private val dao: CustomerDao, private val trigger: Syn
     override fun search(query: String): Flow<List<Store>> = dao.search(query.trim()).map { l -> l.map { it.toModel() } }
     override fun observe(clientUuid: String): Flow<Store?> = dao.observe(clientUuid).map { it?.toModel() }
 
-    override suspend fun create(name: String, ownerName: String?, phone: String?, address: String?, notes: String?): String {
+    override suspend fun create(
+        name: String, ownerName: String?, phone: String?, address: String?, notes: String?,
+        lat: Double?, lng: Double?, locationAccuracy: Double?,
+    ): String {
         val n = name.trim()
         if (n.isEmpty()) throw UserFacingException("Enter the store name.")
         val uuid = UUID.randomUUID().toString()
@@ -20,10 +23,18 @@ class StoreRepositoryImpl(private val dao: CustomerDao, private val trigger: Syn
                 clientUuid = uuid, serverId = null, name = n,
                 ownerName = ownerName.clean(), phone = phone.clean(), address = address.clean(), notes = notes.clean(),
                 active = true, dirty = true, updatedAt = System.currentTimeMillis(),
+                lat = lat.takeIf { lng != null }, lng = lng.takeIf { lat != null },
+                locationAccuracy = locationAccuracy.takeIf { lat != null && lng != null },
+                locationSource = if (lat != null && lng != null) CustomerEntity.SOURCE_DEVICE else null,
             )
         )
         trigger.syncNow()
         return uuid
+    }
+
+    override suspend fun setLocation(clientUuid: String, fix: GeoFix) {
+        dao.setDeviceLocation(clientUuid, fix.lat, fix.lng, fix.accuracy, System.currentTimeMillis())
+        trigger.syncNow()
     }
 
     private fun String?.clean(): String? = this?.trim()?.ifEmpty { null }

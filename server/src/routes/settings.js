@@ -2,6 +2,7 @@ const router = require('express').Router();
 const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap } = require('../lib/http');
+const { validateSchedule, readSchedule } = require('../lib/tracking');
 
 const NAME = 'shop_name';
 const MARK = 'shop_mark';
@@ -34,6 +35,15 @@ router.put('/', authenticate, requireRole('MANAGER'), wrap(async (req, res) => {
   if (mark) await put(MARK, mark);
   else await prisma.setting.deleteMany({ where: { key: MARK } });
   res.json(await read());
+}));
+
+router.get('/tracking-schedule', authenticate, wrap(async (req, res) => res.json(await readSchedule(prisma))));
+
+router.put('/tracking-schedule', authenticate, requireRole('MANAGER'), wrap(async (req, res) => {
+  const r = validateSchedule(req.body || {});
+  if (r.fields) return fail(res, 400, 'Check the highlighted fields.', r.fields);
+  await put('tracking_schedule', JSON.stringify(r.schedule));
+  res.json(r.schedule);
 }));
 
 module.exports = router;

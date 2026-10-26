@@ -21,6 +21,11 @@ import kotlinx.coroutines.launch
 import ph.marbingo.field.data.*
 import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.tracking.TrackingState
+import ph.marbingo.field.ui.tracking.TrackingStatusCard
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 class HomeViewModel(private val deps: UiDeps) : ViewModel() {
     val session: StateFlow<Session?> = deps.auth.session
@@ -30,6 +35,15 @@ class HomeViewModel(private val deps: UiDeps) : ViewModel() {
     val todayOrders: StateFlow<List<Order>> = deps.orders.recent(200)
         .map { list -> list.filter { Fmt.isToday(it.orderedAt) }.sortedByDescending { it.orderedAt } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Null until the first emission, so the card never flashes a false "off" banner. */
+    val tracking: StateFlow<TrackingState?> = deps.tracking.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** On return to the app: restart sharing if it died and re-read permissions changed in Settings. */
+    fun onResume() {
+        viewModelScope.launch { try { deps.tracking.ensureScheduled() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
+    }
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
@@ -63,6 +77,13 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
     val sync by vm.sync.collectAsState()
     val orders by vm.todayOrders.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
+    val tracking by vm.tracking.collectAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) vm.onResume() }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
 
     MainScaffold(nav, Routes.HOME, session?.shopName ?: "Marbingo Field") {
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
@@ -74,6 +95,9 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
                 item {
                     Text(greeting(session?.name), style = MaterialTheme.typography.headlineMedium)
                     Text("Take an order at a store, or check what's waiting.", style = MaterialTheme.typography.bodyMedium, color = Mb.Muted)
+                }
+                tracking?.let { t ->
+                    item { TrackingStatusCard(t, onClick = { nav.navigate(Routes.trackingSetup()) }) }
                 }
                 item { SyncCard(sync, onSync = vm::syncNow) }
                 item {

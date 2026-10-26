@@ -2,6 +2,7 @@ const router = require('express').Router();
 const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap } = require('../lib/http');
+const { readSchedule } = require('../lib/tracking');
 const { fieldPrice, orderInclude, shapeOrder, shapeCustomer } = require('../lib/orders');
 
 router.use(authenticate);
@@ -24,8 +25,12 @@ router.get('/pull', requireRole('MANAGER', 'AGENT'), wrap(async (req, res) => {
     prisma.order.findMany({ where: orderWhere, include: orderInclude, orderBy: { id: 'asc' } }),
   ]);
 
+  const trackingSchedule = await readSchedule(prisma);
+
   res.json({
     serverTime,
+    trackingSchedule,
+    trackingConsentAt: req.user.trackingConsentAt,
     items: items.map((i) => ({
       id: i.id, name: i.name, sku: i.sku, unit: i.unit,
       categoryId: i.categoryId, category: i.category ? i.category.name : null,

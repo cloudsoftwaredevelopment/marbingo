@@ -13,8 +13,8 @@ android {
         applicationId = "ph.marbingo.field"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -31,6 +31,20 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"https://CHANGE-ME/\"")
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+
+        // Small, R8-minified build for the installed test app: same applicationId and API host as debug, signed with
+        // the debug key, so it installs over (upgrades) the debug APK. Smaller APK = faster Play Protect scan.
+        create("staging") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-staging"
+            isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            matchingFallbacks += listOf("release")
+            buildConfigField("String", "API_BASE_URL", "\"http://marbingo.62-84-181-147.sslip.io/\"")
         }
     }
 
@@ -70,6 +84,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.play.services.location)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

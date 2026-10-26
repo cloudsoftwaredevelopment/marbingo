@@ -6,6 +6,7 @@ export const CAN = {
   orders: ['MANAGER', 'INVENTORY', 'AGENT'],
   orderActions: ['MANAGER', 'INVENTORY'],
   stores: ['MANAGER', 'INVENTORY'],
+  map: ['MANAGER'],
   admin: ['MANAGER']
 };
 export const can = (user, cap) => !!user && CAN[cap].includes(user.role);

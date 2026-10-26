@@ -23,7 +23,19 @@ interface StoreRepository {
     fun search(query: String): Flow<List<Store>>
     fun observe(clientUuid: String): Flow<Store?>
     /** Saves locally (queued for sync) and returns the new store's clientUuid. */
-    suspend fun create(name: String, ownerName: String?, phone: String?, address: String?, notes: String?): String
+    suspend fun create(
+        name: String, ownerName: String?, phone: String?, address: String?, notes: String?,
+        lat: Double? = null, lng: Double? = null, locationAccuracy: Double? = null,
+    ): String
+    /** Pins the store at a fix taken on this device; queued for sync. */
+    suspend fun setLocation(clientUuid: String, fix: GeoFix)
+}
+
+interface DeviceLocator {
+    /** True when precise location permission is held. */
+    fun hasPermission(): Boolean
+    /** One-shot high-accuracy fix, or null when none arrives within [timeoutMs] (or permission is missing). */
+    suspend fun currentFix(timeoutMs: Long = 20_000): GeoFix?
 }
 
 interface OrderRepository {

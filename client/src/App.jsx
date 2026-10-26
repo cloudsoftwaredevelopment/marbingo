@@ -9,6 +9,7 @@ import Pos from './pages/Pos';
 import Admin from './pages/Admin';
 import Orders from './pages/Orders';
 import Stores from './pages/Stores';
+import EcosystemMap from './pages/EcosystemMap';
 
 // Layout renders <Outlet/> inside the shell with the sidebar.
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="pos" element={<RequireAuth cap="pos"><Pos /></RequireAuth>} />
         <Route path="orders" element={<RequireAuth cap="orders"><Orders /></RequireAuth>} />
         <Route path="stores" element={<RequireAuth cap="stores"><Stores /></RequireAuth>} />
+        <Route path="map" element={<RequireAuth cap="map"><EcosystemMap /></RequireAuth>} />
         <Route path="admin" element={<RequireAuth cap="admin"><Admin /></RequireAuth>} />
         <Route path="profile" element={<Profile />} />
       </Route>

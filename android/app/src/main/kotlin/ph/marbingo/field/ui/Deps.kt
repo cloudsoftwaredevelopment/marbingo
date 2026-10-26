@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import ph.marbingo.field.MarbingoApp
 import ph.marbingo.field.data.*
+import ph.marbingo.field.tracking.TrackingRepository
 
 /** What the UI needs from the data layer. Production: AppGraph. Tests and previews: fakes. */
 interface UiDeps {
@@ -15,6 +16,8 @@ interface UiDeps {
     val orders: OrderRepository
     val sync: SyncRepository
     val printer: PrinterRepository
+    val tracking: TrackingRepository
+    val locator: DeviceLocator
 }
 
 class GraphDeps(context: Context) : UiDeps {
@@ -26,6 +29,8 @@ class GraphDeps(context: Context) : UiDeps {
     override val orders get() = graph.orders
     override val sync get() = graph.sync
     override val printer get() = graph.printer
+    override val tracking get() = graph.tracking
+    override val locator get() = graph.locator
 }
 
 val LocalDeps = staticCompositionLocalOf<UiDeps> { error("UiDeps not provided") }

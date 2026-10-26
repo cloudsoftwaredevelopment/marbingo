@@ -26,11 +26,12 @@ internal fun ItemDto.toEntity() = ItemEntity(
     id, name, sku, unit, categoryId, category, sellingPrice, wholesalePrice, fieldPrice, qtyOnHand, imageUrl, updatedAt,
 )
 
-internal fun CustomerEntity.toModel() = Store(clientUuid, serverId, name, ownerName, phone, address, notes, dirty)
+internal fun CustomerEntity.toModel() = Store(clientUuid, serverId, name, ownerName, phone, address, notes, dirty, lat, lng, locationAccuracy)
 
 internal fun CustomerDto.toEntity(now: Long) = CustomerEntity(
     clientUuid, id, name, ownerName, phone, address, notes, active, dirty = false,
     updatedAt = Iso.parse(updatedAt) ?: now,
+    lat = lat, lng = lng, locationAccuracy = locationAccuracy, locationSource = locationSource,
 )
 
 private inline fun <reified E : Enum<E>> enumOr(name: String, default: E): E =

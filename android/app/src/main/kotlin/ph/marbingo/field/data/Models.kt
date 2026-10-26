@@ -24,7 +24,15 @@ data class Store(
     val address: String?,
     val notes: String?,
     val pendingSync: Boolean,
-)
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val locationAccuracy: Double? = null,   // metres
+) {
+    val hasLocation: Boolean get() = lat != null && lng != null
+}
+
+/** A GPS fix taken on the tablet. */
+data class GeoFix(val lat: Double, val lng: Double, val accuracy: Double?)
 
 enum class SyncState { QUEUED, SYNCED, ERROR }
 enum class OrderStatus { PENDING, DELIVERED, CANCELLED }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,6 +30,9 @@ import ph.marbingo.field.ui.settings.SettingsScreen
 import ph.marbingo.field.ui.settings.SettingsViewModel
 import ph.marbingo.field.ui.stores.*
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.ui.tracking.OnboardingViewModel
+import ph.marbingo.field.ui.tracking.TrackingSetupScreen
+import kotlinx.coroutines.flow.first
 import ph.marbingo.field.ui.theme.MarbingoTheme
 
 private sealed interface SessionState {
@@ -70,7 +74,24 @@ private fun AppNav(session: Session?) {
         }
     }
 
+    // After sign-in (and on each cold start) walk the agent through location sharing until the required steps are done.
+    var checkedSetup by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(session?.userId, currentRoute) {
+        if (session == null) { checkedSetup = false; return@LaunchedEffect }
+        if (checkedSetup || currentRoute == null || currentRoute == Routes.SIGN_IN) return@LaunchedEffect
+        checkedSetup = true
+        val st = deps.tracking.state.first()
+        if (!st.setupComplete) nav.navigate(Routes.trackingSetup(forced = session.role == "AGENT")) { launchSingleTop = true }
+    }
+
     NavHost(nav, startDestination = start) {
+        composable(
+            Routes.TRACKING_SETUP,
+            arguments = listOf(navArgument("forced") { type = NavType.BoolType; defaultValue = false }),
+        ) { e ->
+            val vm: OnboardingViewModel = viewModel(factory = vmFactory { OnboardingViewModel(deps) })
+            TrackingSetupScreen(vm, nav, forced = e.arguments?.getBoolean("forced") ?: false)
+        }
         composable(Routes.SIGN_IN) {
             val vm: SignInViewModel = viewModel(factory = vmFactory { SignInViewModel(deps) })
             SignInScreen(vm)

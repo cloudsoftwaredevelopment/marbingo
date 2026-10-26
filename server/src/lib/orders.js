@@ -81,7 +81,36 @@ const shapeOrder = (o) => ({
 
 const shapeCustomer = (c) => ({
   id: c.id, clientUuid: c.clientUuid, name: c.name, ownerName: c.ownerName, phone: c.phone,
-  address: c.address, notes: c.notes, active: c.active, createdAt: c.createdAt, updatedAt: c.updatedAt,
+  address: c.address, notes: c.notes, active: c.active,
+  lat: c.lat, lng: c.lng, locationSource: c.locationSource, locationAccuracy: c.locationAccuracy, locatedAt: c.locatedAt,
+  createdAt: c.createdAt, updatedAt: c.updatedAt,
 });
 
-module.exports = { fieldPrice, priceLine, mergeLines, deliveryQuantities, parseDate, orderInclude, shapeOrder, shapeCustomer };
+// Reads lat/lng/locationAccuracy from a request body. Returns { error, fields } | { data } | { data: null } when absent.
+// null/null clears the location. Source is gps for AGENT callers, manual otherwise.
+function parseLocation(b, user) {
+  const given = (k) => b[k] !== undefined;
+  if (!given('lat') && !given('lng')) return { data: null };
+  if (b.lat === null && b.lng === null) {
+    return { data: { lat: null, lng: null, locationSource: null, locationAccuracy: null, locatedAt: null, locatedById: null } };
+  }
+  const lat = b.lat === null || b.lat === '' ? NaN : Number(b.lat);
+  const lng = b.lng === null || b.lng === '' ? NaN : Number(b.lng);
+  const fields = {};
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) fields.lat = 'Latitude must be between -90 and 90.';
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) fields.lng = 'Longitude must be between -180 and 180.';
+  let acc = null;
+  if (b.locationAccuracy !== undefined && b.locationAccuracy !== null) {
+    acc = Number(b.locationAccuracy);
+    if (!Number.isFinite(acc) || acc < 0) fields.locationAccuracy = 'Accuracy must be 0 or more metres.';
+  }
+  if (Object.keys(fields).length) return { error: 'Check the highlighted fields.', fields };
+  return {
+    data: {
+      lat, lng, locationAccuracy: acc, locationSource: user.role === 'AGENT' ? 'gps' : 'manual',
+      locatedAt: new Date(), locatedById: user.id,
+    },
+  };
+}
+
+module.exports = { parseLocation, fieldPrice, priceLine, mergeLines, deliveryQuantities, parseDate, orderInclude, shapeOrder, shapeCustomer };

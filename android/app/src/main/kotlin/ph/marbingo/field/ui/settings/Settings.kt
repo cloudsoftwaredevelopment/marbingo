@@ -25,6 +25,9 @@ import ph.marbingo.field.data.*
 import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.home.SyncCard
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.tracking.TrackingState
+import ph.marbingo.field.ui.tracking.TrackingStatusCard
+import ph.marbingo.field.ui.tracking.trackingSummary
 import ph.marbingo.field.ui.theme.MbShapes
 import ph.marbingo.field.ui.theme.MbType
 
@@ -32,6 +35,9 @@ class SettingsViewModel(private val deps: UiDeps) : ViewModel() {
     val session: StateFlow<Session?> = deps.auth.session.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val sync: StateFlow<SyncStatus> = deps.sync.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SyncStatus(null, 0, 0, false, null))
+
+    val tracking: StateFlow<TrackingState?> = deps.tracking.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _devices = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val devices: StateFlow<List<Pair<String, String>>> = _devices.asStateFlow()
@@ -136,6 +142,7 @@ fun SettingsScreen(vm: SettingsViewModel, nav: NavController) {
     val selected by vm.selected.collectAsState()
     val busy by vm.busy.collectAsState()
     val forceText by vm.forceSignOutText.collectAsState()
+    val tracking by vm.tracking.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var btGranted by remember { mutableStateOf(false) }
     val requestBt = rememberBluetoothPermission { granted ->
@@ -207,6 +214,16 @@ fun SettingsScreen(vm: SettingsViewModel, nav: NavController) {
                         icon = { Icon(Icons.Filled.Print, contentDescription = null) },
                     )
                 }
+            }
+
+            ScreenTitle("Location sharing")
+            tracking?.let { t ->
+                TrackingStatusCard(t, onClick = { nav.navigate(Routes.trackingSetup()) })
+                Text(
+                    "Shared only during work hours (${t.schedule.fullLabel()}). Tap to review permissions.",
+                    style = MaterialTheme.typography.bodySmall, color = Mb.Muted,
+                )
+                t.lastError?.takeIf { t.inHoursNow }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Mb.Danger) }
             }
 
             ScreenTitle("Sync")

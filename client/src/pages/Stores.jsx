@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { num, peso, pesoWhole } from '../lib/format';
 import '../styles/forms.css';
@@ -35,6 +36,10 @@ function StoreFields({ f, set, fe, prefix }) {
     </div>
   );
 }
+
+const LocChip = ({ c }) => (c.lat != null && c.lng != null
+  ? <span className="badge badge-in">On map</span>
+  : <span className="badge badge-none">No location</span>);
 
 const toForm = (c) => ({ name: c.name || '', ownerName: c.ownerName || '', phone: c.phone || '', address: c.address || '', notes: c.notes || '' });
 
@@ -79,6 +84,10 @@ function Detail({ id, onChanged }) {
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <h2 className="h2">{d.customer.name}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <LocChip c={d.customer} />
+        {d.customer.lat != null && <Link to={`/map?customerId=${d.customer.id}`}>View on map</Link>}
+      </div>
       <div className="grid-fit" style={{ '--min': '140px' }}>
         {[['Orders', num(t.orderCount)], ['Pending', num(t.pendingCount)], ['Total delivered', pesoWhole(t.totalDelivered)]].map(([k, v]) => (
           <div key={k} className="margin-box"><span className="t">{k}</span><span className="v">{v}</span></div>
@@ -199,6 +208,7 @@ export default function Stores() {
                       <tr key={c.id} style={{ background: sel === c.id ? 'var(--accent-tint)' : undefined }}>
                         <td>
                           <button type="button" className="btn btn-ghost btn-sm" aria-current={sel === c.id} onClick={() => setSel(c.id)} style={{ padding: '0 8px', fontWeight: 600, textAlign: 'left', color: 'var(--accent)' }}>{c.name}</button>
+                          <span style={{ marginLeft: 6 }}><LocChip c={c} /></span>
                           {!c.active && <span className="badge badge-none" style={{ marginLeft: 6 }}>Inactive</span>}
                           {(c.ownerName || c.address) && (
                             <span style={{ display: 'block', padding: '0 8px', fontSize: 13, color: 'var(--muted)' }}>

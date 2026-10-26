@@ -40,7 +40,8 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 | Orders: deliver / cancel | ✅ | ✅ | | cancel own pending |
 | Stores | ✅ | ✅ | | ✅ (app; edit own) |
 | Top 10 sidebar | turnover + revenue | turnover + revenue | turnover only | turnover only |
-| Admin (users, categories, shop name + logo letters) | ✅ | | | |
+| Ecosystem Map (`/map`) | ✅ | | | tracked (work hours) |
+| Admin (users, categories, shop name + logo letters, tracking schedule) | ✅ | | | |
 
 ## Demo logins (password `marbingo123`)
 maria@ (Manager) · jose@ (Inventory) · ana@ (Cashier) · ramon@ (Agent) — all `@marbingo.test`.
@@ -62,7 +63,18 @@ cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-
 - Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each published build; installing over the old APK keeps queued orders.
 - APKs: `downloads/` served by nginx at `/downloads/` (MIME `application/vnd.android.package-archive`); APKs + `index.html` are gitignored.
 
+- Build types: `debug` (43 MB) and `staging` (R8-minified, debug-signed, same applicationId `ph.marbingo.field.debug` so it upgrades the debug app, ~25 MB — publish this one as `marbingo-field-v<VER>.apk`; smaller APKs pass Play Protect's scan faster). `./gradlew :app:assembleStaging`.
+- Room is at **version 2** (`MIGRATION_1_2`: customer lat/lng + `location_points` + `tracking_meta`), covered by `MigrationTest`.
+- Location tracking lives in `app/.../tracking/`: `LocationTrackingService` (foreground, type `location`), `TrackingScheduler` (exact alarms at work-hour boundaries + every 15 min on duty to revive a killed service; boot/package-replaced/time-change receivers), `LocationUploader` (outbox → `POST /api/tracking/points`), onboarding UI in `ui/tracking/`. Needs Google Play services (fused location).
+
+## Ecosystem Map (tracking)
+Contract: `docs/tracking-api.md`. Agents' tablets record GPS **only inside the work schedule** (`settings.tracking_schedule`, edited in Admin → Tracking; server also rejects out-of-hours points). `location_points` are purged after 365 days (`server/src/jobs/retention.js`); `agent_stops` (derived by `lib/tracking.js#detectStops`: ≥3 min within 60 m, matched to a store ≤75 m) are kept. Stops are recomputed per agent-day (debounced after uploads, single-flight, also on read when stale); routes cached in `track_cache`.
+- Road snapping: `server/src/lib/osrm.js` calls OSRM at `OSRM_URL` (`/match`); without it the map shows the raw GPS trail (`snapped:false`). OSRM is **not installed yet** — run `bash ops/osrm/install.sh` (builds OSRM 5.27.1 into `/opt/osrm`, Panay map, systemd `osrm-routed` on 127.0.0.1:5010), then add `OSRM_URL=http://127.0.0.1:5010` to `server/.env`, `pm2 restart marbingo`, and reseed so demo tracks follow roads. Refresh roads monthly: `bash ops/osrm/build-map.sh`.
+- Web page `/map` (MANAGER only): Leaflet + OSM tiles (respect the OSM tile usage policy; switch to a tile provider if usage grows).
+
 ### Handset checklist (can't be tested here)
+Tracking: setup flow ("Allow all the time", notifications, battery exemption + brand tips) → during work hours the notification shows and the live marker/route appear on web `/map` → outside hours tracking stops → airplane mode then reconnect (points upload) → reboot (tracking resumes) → turn GPS off (red banner) → "Set location here" on a store shows the pin on the web. Upgrade 0.1 → 0.2 keeps queued orders (Room migration).
+Orders:
 Sign in online → airplane mode → add a store + take an order (scan a barcode with the camera) → order shows "Waiting to sync" → reconnect → it syncs and appears on web `/orders` → deliver it on the web → app shows Delivered after sync. Also: Bluetooth printer pick + test print + print slip (58mm ESC/POS), Share PDF via Messenger/Viber, sign-out blocked while orders are unsynced.
 
 ## Deploy

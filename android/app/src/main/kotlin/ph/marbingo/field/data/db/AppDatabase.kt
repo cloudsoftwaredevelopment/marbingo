@@ -4,14 +4,18 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
- * Version 1 and it stays: the DB holds queued orders, so destructive migration is never allowed.
- * Future schema changes must ship real Migrations.
+ * The DB holds queued orders, so destructive migration is never allowed: every schema change
+ * ships a real Migration (see [MIGRATION_1_2]). Version 2 adds store locations and the GPS outbox.
  */
 @Database(
-    entities = [ItemEntity::class, CustomerEntity::class, OrderEntity::class, OrderLineEntity::class, SyncMetaEntity::class],
-    version = 1,
+    entities = [ItemEntity::class, CustomerEntity::class, OrderEntity::class, OrderLineEntity::class, SyncMetaEntity::class,
+        LocationPointEntity::class, TrackingMetaEntity::class,
+    ],
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,9 +23,35 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun customers(): CustomerDao
     abstract fun orders(): OrderDao
     abstract fun syncMeta(): SyncMetaDao
+    abstract fun locationPoints(): LocationPointDao
+    abstract fun trackingMeta(): TrackingMetaDao
 
     companion object {
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "marbingo_field.db").build()
+            Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "marbingo_field.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
+    }
+}
+
+/** v1 -> v2: store pin columns on customers, the GPS outbox and the tracking meta row. Pure additions: nothing is dropped. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `customers` ADD COLUMN `lat` REAL")
+        db.execSQL("ALTER TABLE `customers` ADD COLUMN `lng` REAL")
+        db.execSQL("ALTER TABLE `customers` ADD COLUMN `locationAccuracy` REAL")
+        db.execSQL("ALTER TABLE `customers` ADD COLUMN `locationSource` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `location_points` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`recordedAt` INTEGER NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, `accuracy` REAL, " +
+                "`speed` REAL, `bearing` REAL, `battery` INTEGER, `uploaded` INTEGER NOT NULL)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_location_points_recordedAt` ON `location_points` (`recordedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_location_points_uploaded` ON `location_points` (`uploaded`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `tracking_meta` (`id` INTEGER NOT NULL, `scheduleDays` TEXT, `scheduleStart` TEXT, " +
+                "`scheduleEnd` TEXT, `consentAt` INTEGER, `consentSynced` INTEGER NOT NULL, `lastFixAt` INTEGER, " +
+                "`lastUploadAt` INTEGER, `lastError` TEXT, PRIMARY KEY(`id`))"
+        )
     }
 }
