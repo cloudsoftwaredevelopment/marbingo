@@ -15,6 +15,23 @@ if [ ! -d "$SRC" ]; then
 fi
 
 if [ ! -x /opt/osrm/bin/osrm-routed ]; then
+  # Bundled sol2 3.3.0 calls a non-existent construct() in optional<T&>::emplace, which GCC 12+ rejects.
+  # Apply the upstream sol2 fix (placement-new + return) — idempotent.
+  SOL="$SRC/third_party/sol2-3.3.0/include/sol/sol.hpp"
+  python3 - "$SOL" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+bad = """			*this = nullopt;
+			this->construct(std::forward<Args>(args)...);
+		}"""
+good = """			*this = nullopt;
+			new (static_cast<void*>(this)) optional(std::in_place, std::forward<Args>(args)...);
+			return **this;
+		}"""
+if bad in s:
+    open(p, "w").write(s.replace(bad, good))
+    print("patched sol2 optional<T&>::emplace")
+PY
   mkdir -p "$SRC/build" && cd "$SRC/build"
   # GCC 13 / Boost 1.83 need relaxed warnings and an explicit <cstdint> for this release.
   cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/osrm -DBUILD_TESTING=OFF \
