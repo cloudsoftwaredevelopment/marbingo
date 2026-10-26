@@ -61,7 +61,7 @@ Rows are those with `updatedAt > since`. Categories are always returned in full.
     "results": [ { "clientUuid": "a9b2…", "ok": true, "order": Order }
                | { "clientUuid": "…", "ok": false, "error": "Unknown item 99." } ] }
   ```
-  Each order is processed on its own. If an order with the same `clientUuid` exists, the response is that order (`ok: true`) and nothing is duplicated. Lines are priced by the server at `fieldPrice`. Duplicate items are merged. Each `qty` must be an integer ≥ 1. The batch holds at most 100 orders. The agent is `req.user`.
+  Each order is processed on its own. If an order with the same `clientUuid` exists, the response is that order (`ok: true`) and nothing is duplicated. Lines are priced by the server with the pack pricing rule (docs/pricing.md), with a per-line pricing snapshot. Duplicate items are merged. Each `qty` must be an integer ≥ 1. The batch holds at most 100 orders. The agent is `req.user`.
 - `GET /api/orders?status=&agentId=&customerId=&from=YYYY-MM-DD&to=YYYY-MM-DD` → `{ orders: [Order], counts: { pending, delivered, cancelled } }`. MANAGER and INVENTORY see all orders; AGENT sees only their own. The list is newest first, at most 200. Dates are matched on `orderedAt` in Manila time.
 - `GET /api/orders/pending-count` (MANAGER, INVENTORY) → `{ pending }` (for the sidebar badge).
 - `GET /api/orders/:id` → `{ order: Order }` (an AGENT only gets their own).
@@ -76,7 +76,7 @@ Rows are those with `updatedAt > since`. Categories are always returned in full.
 
 ## Items (changes)
 
-`POST/PUT /api/items` accept `wholesale` (a peso decimal, optional, blank → null) and return `wholesalePrice`.
+`POST/PUT /api/items` accept `packs` (see docs/pricing.md). The old `wholesale` field is gone.
 
 ## Reports (changes)
 
