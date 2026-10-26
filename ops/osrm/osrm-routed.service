@@ -1,0 +1,12 @@
+[Unit]
+Description=OSRM routing engine (Marbingo road snapping, localhost only)
+After=network.target
+
+[Service]
+ExecStart=/opt/osrm/bin/osrm-routed --algorithm mld --ip 127.0.0.1 --port 5010 --max-matching-size 200 /opt/osrm/data/region.osrm
+Restart=on-failure
+User=nobody
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

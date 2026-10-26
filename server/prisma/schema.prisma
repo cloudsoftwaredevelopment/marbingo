@@ -25,6 +25,11 @@ enum OrderStatus {
   cancelled
 }
 
+enum LocationSource {
+  gps
+  manual
+}
+
 enum MoveReason {
   initial
   sale
@@ -33,26 +38,31 @@ enum MoveReason {
 }
 
 model User {
-  id           Int         @id @default(autoincrement())
-  firstName    String      @map("first_name")
-  lastName     String      @map("last_name")
-  email        String      @unique
-  mobile       String?
-  address      String?
-  photoUrl     String?     @map("photo_url")
-  role         Role
-  employeeId   String      @unique @map("employee_id")
-  passwordHash String      @map("password_hash")
-  active       Boolean     @default(true)
+  id                Int             @id @default(autoincrement())
+  firstName         String          @map("first_name")
+  lastName          String          @map("last_name")
+  email             String          @unique
+  mobile            String?
+  address           String?
+  photoUrl          String?         @map("photo_url")
+  role              Role
+  employeeId        String          @unique @map("employee_id")
+  passwordHash      String          @map("password_hash")
+  active            Boolean         @default(true)
   /// Bumped on password change / deactivation to revoke existing tokens.
-  tokenVersion Int         @default(0) @map("token_version")
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  itemsCreated Item[]
-  sales        Sale[]
-  stockMoves   StockMove[]
-  customers    Customer[]  @relation("CustomerCreatedBy")
-  orders       Order[]     @relation("OrderAgent")
-  delivered    Order[]     @relation("OrderDeliveredBy")
+  tokenVersion      Int             @default(0) @map("token_version")
+  /// When the agent acknowledged the work-hours location tracking notice (Data Privacy Act).
+  trackingConsentAt DateTime?       @map("tracking_consent_at") @db.Timestamptz
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  itemsCreated      Item[]
+  sales             Sale[]
+  stockMoves        StockMove[]
+  customers         Customer[]      @relation("CustomerCreatedBy")
+  orders            Order[]         @relation("OrderAgent")
+  delivered         Order[]         @relation("OrderDeliveredBy")
+  locationPoints    LocationPoint[]
+  stops             AgentStop[]
+  locatedStores     Customer[]      @relation("CustomerLocatedBy")
 
   @@map("users")
 }
@@ -145,20 +155,28 @@ model Setting {
 
 /// A store the field agents sell to. client_uuid is set by the device for offline creation.
 model Customer {
-  id          Int      @id @default(autoincrement())
-  clientUuid  String   @unique @default(uuid()) @map("client_uuid")
-  name        String
-  ownerName   String?  @map("owner_name")
-  phone       String?
-  address     String?
-  notes       String?
-  active      Boolean  @default(true)
-  createdById Int?     @map("created_by")
-  createdBy   User?    @relation("CustomerCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  orders      Order[]
-  sales       Sale[]
+  id               Int             @id @default(autoincrement())
+  clientUuid       String          @unique @default(uuid()) @map("client_uuid")
+  name             String
+  ownerName        String?         @map("owner_name")
+  phone            String?
+  address          String?
+  notes            String?
+  active           Boolean         @default(true)
+  lat              Float?
+  lng              Float?
+  locationSource   LocationSource? @map("location_source")
+  locationAccuracy Float?          @map("location_accuracy")
+  locatedAt        DateTime?       @map("located_at") @db.Timestamptz
+  locatedById      Int?            @map("located_by")
+  locatedBy        User?           @relation("CustomerLocatedBy", fields: [locatedById], references: [id])
+  stops            AgentStop[]
+  createdById      Int?            @map("created_by")
+  createdBy        User?           @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  orders           Order[]
+  sales            Sale[]
 
   @@index([updatedAt])
   @@map("customers")
@@ -203,4 +221,57 @@ model OrderLine {
   deliveredQty Int?  @map("delivered_qty")
 
   @@map("order_lines")
+}
+
+/// Raw GPS fix from an agent's tablet. Kept 12 months (purged daily). Unique per agent+instant for idempotent uploads.
+model LocationPoint {
+  id         BigInt   @id @default(autoincrement())
+  agentId    Int      @map("agent_id")
+  agent      User     @relation(fields: [agentId], references: [id])
+  recordedAt DateTime @map("recorded_at") @db.Timestamptz
+  lat        Float
+  lng        Float
+  accuracy   Float?
+  speed      Float?
+  bearing    Float?
+  battery    Int?
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz
+
+  @@unique([agentId, recordedAt])
+  @@map("location_points")
+}
+
+/// A detected stop (derived from location_points). Kept beyond the 12-month point retention.
+model AgentStop {
+  id         Int       @id @default(autoincrement())
+  agentId    Int       @map("agent_id")
+  agent      User      @relation(fields: [agentId], references: [id])
+  day        String /// Manila date YYYY-MM-DD
+  startedAt  DateTime  @map("started_at") @db.Timestamptz
+  endedAt    DateTime  @map("ended_at") @db.Timestamptz
+  durationS  Int       @map("duration_s")
+  lat        Float
+  lng        Float
+  customerId Int?      @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  pointCount Int       @map("point_count")
+
+  @@unique([agentId, startedAt])
+  @@index([agentId, day])
+  @@index([customerId, startedAt])
+  @@map("agent_stops")
+}
+
+/// Cached road-snapped geometry per agent-day; recomputed when point_count changes.
+model TrackCache {
+  agentId    Int      @map("agent_id")
+  day        String
+  pointCount Int      @map("point_count")
+  geometry   Json
+  snapped    Boolean
+  distanceM  Int      @map("distance_m")
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+
+  @@id([agentId, day])
+  @@map("track_cache")
 }
