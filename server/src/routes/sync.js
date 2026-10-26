@@ -7,6 +7,10 @@ const { fieldPrice, orderInclude, shapeOrder, shapeCustomer } = require('../lib/
 
 router.use(authenticate);
 
+// Rows are stamped with their write time, not commit time, so a transaction still open during the
+// previous pull can commit with updatedAt < since. Re-send a window before `since`; device upserts are idempotent.
+const OVERLAP_MS = 5 * 60 * 1000;
+
 router.get('/pull', requireRole('MANAGER', 'AGENT'), wrap(async (req, res) => {
   // Captured before the queries so rows changed mid-pull are picked up next time.
   const serverTime = new Date();
@@ -15,7 +19,7 @@ router.get('/pull', requireRole('MANAGER', 'AGENT'), wrap(async (req, res) => {
     since = new Date(String(req.query.since));
     if (Number.isNaN(since.getTime())) return fail(res, 400, 'since must be an ISO date.');
   }
-  const changed = since ? { updatedAt: { gt: since } } : {};
+  const changed = since ? { updatedAt: { gt: new Date(since.getTime() - OVERLAP_MS) } } : {};
   const orderWhere = { ...changed, ...(req.user.role === 'AGENT' ? { agentId: req.user.id } : {}) };
 
   const [items, categories, customers, orders] = await Promise.all([

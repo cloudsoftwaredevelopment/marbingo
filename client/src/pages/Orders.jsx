@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import api, { apiError } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../lib/roles';
-import { num, peso } from '../lib/format';
+import { num, peso, deliveredTotal, orderTotal } from '../lib/format';
 import '../styles/forms.css';
 import '../styles/orders.css';
 
@@ -163,8 +163,7 @@ function Slip({ order, shop }) {
   );
 }
 
-const deliveredTotal = (o) => o.lines.reduce((a, l) => a + (l.deliveredQty ?? l.qty) * l.unitPrice, 0);
-const shownTotal = (o) => (o.status === 'delivered' ? deliveredTotal(o) : o.total);
+const shownTotal = orderTotal;
 
 export default function Orders() {
   const { user, settings } = useAuth();

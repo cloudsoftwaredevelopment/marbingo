@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
-import { num, peso, pesoWhole } from '../lib/format';
+import { num, peso, pesoWhole, orderTotal } from '../lib/format';
 import '../styles/forms.css';
 import '../styles/orders.css';
 
@@ -114,7 +114,7 @@ function Detail({ id, onChanged }) {
                   <td className="ref">#{o.id}</td>
                   <td>{dFmt.format(new Date(o.orderedAt))}</td>
                   <td><span className={'badge ' + (BADGE[o.status] || 'badge-none')}>{o.status[0].toUpperCase() + o.status.slice(1)}</span></td>
-                  <td className="num">{peso(o.total)}</td>
+                  <td className="num">{peso(orderTotal(o))}</td>
                 </tr>
               ))}
             </tbody>

@@ -305,15 +305,13 @@ async function main() {
       const deliveredAt = new Date(orderedAt.getTime() + randInt(1, 3) * 86400000);
       const id = ++saleId;
       let total = 0;
+      // Delivered in full; the ledger repair below restocks beforehand wherever that would go negative.
       for (const l of olines) {
-        l.deliveredQty = Math.min(l.it.qty, l.qty);
-        if (l.deliveredQty > 0) {
-          l.it.qty -= l.deliveredQty;
-          const lt = l.deliveredQty * l.unitPrice;
-          total += lt;
-          lines.push({ id: ++lineId, saleId: id, itemId: l.it.id, qty: l.deliveredQty, unitPrice: l.unitPrice, lineTotal: lt });
-          moves.push({ itemId: l.it.id, change: -l.deliveredQty, reason: 'sale', at: deliveredAt, byId: users.INVENTORY.id });
-        }
+        l.deliveredQty = l.qty;
+        const lt = l.deliveredQty * l.unitPrice;
+        total += lt;
+        lines.push({ id: ++lineId, saleId: id, itemId: l.it.id, qty: l.deliveredQty, unitPrice: l.unitPrice, lineTotal: lt });
+        moves.push({ itemId: l.it.id, change: -l.deliveredQty, reason: 'sale', at: deliveredAt, byId: users.INVENTORY.id });
       }
       sales.push({ id, soldAt: deliveredAt, cashierId: users.AGENT.id, channel: 'field', customerId: customer.id, total });
       Object.assign(row, { deliveredAt, deliveredById: users.INVENTORY.id, saleId: id });
@@ -321,7 +319,24 @@ async function main() {
     orderRows.push(row);
   }
 
-  // Field deliveries run after the daily restock pass, so top up anything they left under its reorder level.
+  // Field deliveries were appended out of time order. Walk each item's ledger chronologically and insert a
+  // restock just before any move that would take stock below zero, so opening stock is never negative.
+  const byItem = new Map(items.map((it) => [it.id, []]));
+  for (const mv of moves) byItem.get(mv.itemId).push(mv);
+  for (const it of items) {
+    let bal = 0;
+    for (const mv of byItem.get(it.id).sort((a, b) => a.at - b.at)) {
+      if (bal + mv.change < 0) {
+        const add = -(bal + mv.change) + it.reorder * 2;
+        moves.push({ itemId: it.id, change: add, reason: 'restock', at: new Date(mv.at.getTime() - 1800000), byId: users.INVENTORY.id });
+        bal += add;
+      }
+      bal += mv.change;
+    }
+    it.qty = bal;
+  }
+
+  // Top up anything left under its reorder level.
   const topUpAt = new Date(Date.now() - 3600000);
   for (const it of items) {
     if (it.qty < it.reorder) {

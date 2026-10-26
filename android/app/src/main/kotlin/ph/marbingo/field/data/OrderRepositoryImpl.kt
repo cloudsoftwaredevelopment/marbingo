@@ -60,8 +60,12 @@ class OrderRepositoryImpl(
         val o = db.orders().get(clientUuid) ?: return
         val serverId = o.serverId
         if (serverId == null || o.syncState != SyncState.SYNCED.name) {
-            // Never reached the server (or was rejected): just forget it.
-            db.orders().delete(clientUuid)
+            // The first upload may have reached the server even though we never got the reply, so a local
+            // delete isn't enough. Queue it as cancelled: the batch push sends cancelReason and the server
+            // either cancels its copy or records the order as cancelled so it can never be delivered.
+            db.orders().upsert(o.copy(status = OrderStatus.CANCELLED.name, cancelledReason = reason.trim(),
+                syncState = SyncState.QUEUED.name, syncError = null, updatedAt = now()))
+            trigger.syncNow()
             return
         }
         if (!o.status.equals(OrderStatus.PENDING.name, ignoreCase = true)) {

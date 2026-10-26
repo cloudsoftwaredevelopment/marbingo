@@ -33,3 +33,7 @@ export function initials(first, last) {
 const dateFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
 export const longDate = (iso) => dateFmt.format(new Date(iso)); // "Mar 4, 2024"
 
+
+// What an order is worth: the delivered amount once delivered (partial deliveries), else the ordered total.
+export const deliveredTotal = (o) => o.lines.reduce((a, l) => a + (l.deliveredQty ?? l.qty) * l.unitPrice, 0);
+export const orderTotal = (o) => (o.status === 'delivered' ? deliveredTotal(o) : o.total);

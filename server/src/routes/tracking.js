@@ -104,6 +104,8 @@ async function freshenDays(days, agentId) {
 router.post('/points', uploaders, wrap(async (req, res) => {
   const list = req.body && req.body.points;
   if (!Array.isArray(list)) return fail(res, 400, 'points must be a list.');
+  // Data Privacy Act: no location is stored until the agent has acknowledged the tracking notice.
+  if (!req.user.trackingConsentAt) return fail(res, 403, 'Accept the location sharing notice in the app first.');
   if (list.length > MAX_POINTS) return fail(res, 400, `Send at most ${MAX_POINTS} points at a time.`);
   const schedule = await T.readSchedule(prisma);
   const now = new Date();
@@ -200,12 +202,13 @@ router.get('/track', manager, wrap(async (req, res) => {
   let geo = null;
   if (!clipped) {
     const cache = await prisma.trackCache.findUnique({ where: { agentId_day: { agentId, day } } });
-    if (cache && cache.pointCount === points.length) geo = { snapped: cache.snapped, route: cache.geometry };
+    // An unsnapped entry (from an OSRM outage) is retried once OSRM is configured again.
+    if (cache && cache.pointCount === points.length && (cache.snapped || !process.env.OSRM_URL)) geo = { snapped: cache.snapped, route: cache.geometry };
   }
   if (!geo) {
     const m = await matchTrack(points);
     geo = { snapped: m.snapped, route: m.route };
-    if (!clipped && points.length) {
+    if (!clipped && points.length && m.snapped) {
       const data = { pointCount: points.length, geometry: m.route, snapped: m.snapped, distanceM: m.distanceM, computedAt: new Date() };
       // Prisma upsert isn't atomic: a concurrent request may have just created the row.
       await prisma.trackCache.upsert({ where: { agentId_day: { agentId, day } }, update: data, create: { agentId, day, ...data } })

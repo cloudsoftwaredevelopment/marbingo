@@ -26,10 +26,14 @@ function parse(b, partial, user) {
   return { fields, data };
 }
 
-const totalsFor = async (ids) => {
+// agentId (for AGENT callers) limits the figures to that agent's own orders.
+const totalsFor = async (ids, agentId) => {
+  const mine = agentId ? { agentId } : {};
   const [orders, delivered] = await Promise.all([
-    prisma.order.groupBy({ by: ['customerId'], where: { customerId: { in: ids } }, _count: true }),
-    prisma.sale.groupBy({ by: ['customerId'], where: { customerId: { in: ids }, order: { isNot: null } }, _sum: { total: true } }),
+    prisma.order.groupBy({ by: ['customerId'], where: { customerId: { in: ids }, ...mine }, _count: true }),
+    prisma.sale.groupBy({
+      by: ['customerId'], where: { customerId: { in: ids }, order: { isNot: null }, ...(agentId ? { cashierId: agentId } : {}) }, _sum: { total: true },
+    }),
   ]);
   return {
     count: new Map(orders.map((r) => [r.customerId, r._count])),
@@ -47,7 +51,7 @@ router.get('/', wrap(async (req, res) => {
   if (req.query.located === '1') where.lat = { not: null };
   else if (req.query.located === '0') where.lat = null;
   const customers = await prisma.customer.findMany({ where, orderBy: { name: 'asc' } });
-  const t = await totalsFor(customers.map((c) => c.id));
+  const t = await totalsFor(customers.map((c) => c.id), req.user.role === 'AGENT' ? req.user.id : null);
   res.json(customers.map((c) => ({
     ...shapeCustomer(c), orderCount: t.count.get(c.id) || 0, totalDelivered: t.sum.get(c.id) || 0,
   })));
@@ -61,7 +65,7 @@ router.get('/:id', wrap(async (req, res) => {
   const orders = await prisma.order.findMany({
     where, include: orderInclude, orderBy: [{ orderedAt: 'desc' }, { id: 'desc' }], take: 200,
   });
-  const t = await totalsFor([customer.id]);
+  const t = await totalsFor([customer.id], req.user.role === 'AGENT' ? req.user.id : null);
   res.json({
     customer: shapeCustomer(customer),
     orders: orders.map(shapeOrder),

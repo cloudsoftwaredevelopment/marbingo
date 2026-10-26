@@ -139,6 +139,8 @@ data class OrderInput(
     val customerId: Int? = null,
     val orderedAt: String,
     val notes: String? = null,
+    /** Set when the agent cancelled the order before it synced (server cancels or records it as cancelled). */
+    val cancelReason: String? = null,
     val lines: List<OrderLineInput>,
 )
 

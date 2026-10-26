@@ -45,14 +45,38 @@ class LocationUploaderTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
                 "/api/tracking/points" -> {
+                    paths += "points"
                     bodies += JSONObject(request.body.readUtf8())
                     pointsResponse()
+                }
+                "/api/tracking/consent" -> {
+                    paths += "consent"
+                    MockResponse().setBody("""{"trackingConsentAt":"2026-10-26T00:00:00.000Z"}""")
                 }
                 "/api/auth/refresh" -> refreshResponse()
                 else -> MockResponse().setResponseCode(404)
             }
         }
         uploader = LocationUploader(ApiClient.create(server.url("/").toString(), tokens), db) { clock }
+        runBlocking { db.trackingMeta().saveConsent(1L, true) } // most tests: consent given and on the server
+    }
+
+    private val paths = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    @Test fun noConsentKeepsPointsAndSendsNothing() = runBlocking {
+        db.trackingMeta().saveConsent(null, false)
+        seed(5)
+        assertEquals(LocationUploader.Outcome.Retry(LocationUploader.CONSENT_PENDING), uploader.uploadPending())
+        assertTrue(paths.isEmpty())
+        assertEquals(5, db.locationPoints().pendingCountNow())
+    }
+
+    @Test fun queuedConsentIsSentBeforeAnyPoints() = runBlocking {
+        db.trackingMeta().saveConsent(1L, false)
+        seed(3)
+        assertEquals(LocationUploader.Outcome.Uploaded(3), uploader.uploadPending())
+        assertEquals(listOf("consent", "points"), paths.toList())
+        assertTrue(db.trackingMeta().get()!!.consentSynced)
     }
 
     @After fun tearDown() { server.shutdown(); db.close() }

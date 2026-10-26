@@ -9,9 +9,11 @@ import ph.marbingo.core.net.ApiErrors
 import ph.marbingo.core.net.MarbingoApi
 import ph.marbingo.core.net.TokenStore
 import ph.marbingo.field.data.Iso
+import ph.marbingo.field.data.OrderStatus
 import ph.marbingo.field.data.toEntities
 import ph.marbingo.field.data.toEntity
 import ph.marbingo.field.data.db.AppDatabase
+import ph.marbingo.field.data.db.CustomerEntity
 import ph.marbingo.field.data.db.OrderWithLines
 import ph.marbingo.field.data.db.SyncMetaEntity
 import retrofit2.HttpException
@@ -129,6 +131,7 @@ class SyncEngine(
                 customerId = if (cust.serverId != null && !cust.dirty) cust.serverId else null,
                 orderedAt = Iso.format(o.order.orderedAt),
                 notes = o.order.notes,
+                cancelReason = if (o.order.status.equals(OrderStatus.CANCELLED.name, ignoreCase = true)) o.order.cancelledReason ?: "Cancelled by agent" else null,
                 lines = o.lines.sortedBy { it.id }.map { OrderLineInput(it.itemId, it.qty) },
             )
             sendable += o
@@ -188,8 +191,9 @@ class SyncEngine(
                 val existing = db.customers().get(c.clientUuid)
                 if (existing?.dirty == true) continue // never clobber unsent local changes
                 var fresh = c.toEntity(t)
-                // Older servers send no pin; don't wipe one the agent set here.
-                if (fresh.lat == null && existing?.lat != null) {
+                // Keep a pin set on this tablet until it has been pushed; otherwise the server wins, including a
+                // cleared pin (lat == null) after a manager removed a wrong location.
+                if (existing?.locationSource == CustomerEntity.SOURCE_DEVICE && existing.lat != null) {
                     fresh = fresh.copy(lat = existing.lat, lng = existing.lng, locationAccuracy = existing.locationAccuracy, locationSource = existing.locationSource)
                 }
                 db.customers().upsert(fresh)

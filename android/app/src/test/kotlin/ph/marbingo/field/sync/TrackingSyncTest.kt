@@ -154,4 +154,12 @@ class TrackingSyncTest {
         engine.run()
         assertEquals(9.0, db.customers().get("c-2")!!.lat!!, 0.0)
     }
+
+    @Test fun managerClearingAPinClearsItOnTheDevice() = runBlocking {
+        // The device holds the server's pin (manual); the manager then removes it on the web.
+        db.customers().upsert(customer("c-3", 3, dirty = false, lat = 9.5, src = "manual"))
+        pullBody = pull(customers = cust("c-3", 3, ""","lat":null,"lng":null,"locationSource":null,"locationAccuracy":null,"locatedAt":null """))
+        engine.run()
+        assertNull(db.customers().get("c-3")!!.lat)
+    }
 }

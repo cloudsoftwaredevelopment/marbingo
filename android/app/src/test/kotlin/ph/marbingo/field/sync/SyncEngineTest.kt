@@ -45,6 +45,7 @@ class SyncEngineTest {
     private val trigger = FakeTrigger()
     private val batchCalls = AtomicInteger()
     private val ordersByUuid = mutableMapOf<String, Int>() // fake server state: clientUuid -> id
+    private val cancelReasons = mutableMapOf<String, String>() // cancelReason sent per order clientUuid
     @Volatile private var batchMode = "ok" // ok | offline | itemError
     @Volatile private var pullBody = pullJson("T1", emptyList(), emptyList())
 
@@ -106,6 +107,7 @@ class SyncEngineTest {
         val results = (0 until os.length()).joinToString(",") {
             val o = os.getJSONObject(it)
             val uuid = o.getString("clientUuid")
+            if (o.has("cancelReason") && !o.isNull("cancelReason")) cancelReasons[uuid] = o.getString("cancelReason")
             val bad = (0 until o.getJSONArray("lines").length()).any { i -> o.getJSONArray("lines").getJSONObject(i).getInt("itemId") == 99 }
             if (bad) """{"clientUuid":"$uuid","ok":false,"error":"Unknown item 99."}"""
             else {
@@ -220,10 +222,24 @@ class SyncEngineTest {
         assertTrue(auth.signOut())
     }
 
-    @Test fun cancelQueuedOrderDeletesLocally() = runBlocking {
+    @Test fun cancelUnsyncedOrderIsQueuedAndSentAsCancelled() = runBlocking {
         val (_, orderUuid) = newStoreAndOrder()
         orders.cancel(orderUuid, "changed mind")
-        assertNull(orders.observe(orderUuid).first())
+        val local = orders.observe(orderUuid).first()!!
+        assertEquals(OrderStatus.CANCELLED, local.status)
+        assertEquals(SyncState.QUEUED, local.syncState) // not deleted: the server may already have it
+        engine.run()
+        assertEquals("changed mind", cancelReasons[orderUuid])
+    }
+
+    @Test fun cancelAfterLostBatchReplyStillReachesServer() = runBlocking {
+        val (_, orderUuid) = newStoreAndOrder()
+        batchMode = "offline" // first upload: no reply, order stays QUEUED
+        engine.run()
+        orders.cancel(orderUuid, "store closed")
+        batchMode = "ok"
+        engine.run()
+        assertEquals("store closed", cancelReasons[orderUuid])
     }
 
     @Test fun cancelSyncedOrderOfflineGivesClearError() = runBlocking {

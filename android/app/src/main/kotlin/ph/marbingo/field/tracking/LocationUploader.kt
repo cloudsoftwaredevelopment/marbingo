@@ -36,6 +36,14 @@ class LocationUploader(
         val dao = db.locationPoints()
         var sent = 0
         try {
+            // The server refuses points (403) until the agent's consent reaches it, so send a queued
+            // consent first; with no consent at all, keep the points and wait.
+            val meta = db.trackingMeta().get()
+            if (meta?.consentAt == null) return@withLock Outcome.Retry(CONSENT_PENDING)
+            if (!meta.consentSynced) {
+                api.giveTrackingConsent()
+                db.trackingMeta().markConsentSynced()
+            }
             while (true) {
                 val batch = dao.pending(BATCH)
                 if (batch.isEmpty()) break
@@ -87,5 +95,6 @@ class LocationUploader(
         const val BATCH = 500
         const val KEEP_UPLOADED_MS = 3L * 24 * 60 * 60 * 1000
         private val DROP_CODES = setOf(400, 413, 422)
+        const val CONSENT_PENDING = "Waiting for the location sharing notice to be accepted."
     }
 }
