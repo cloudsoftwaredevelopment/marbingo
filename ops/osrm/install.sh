@@ -32,6 +32,9 @@ if bad in s:
     open(p, "w").write(s.replace(bad, good))
     print("patched sol2 optional<T&>::emplace")
 PY
+  # GCC 13 headers no longer pull in <vector> transitively; suffix_table.hpp relies on that.
+  grep -q '#include <vector>' "$SRC/include/extractor/suffix_table.hpp" || \
+    sed -i 's|#include <unordered_set>|#include <unordered_set>\n#include <vector>|' "$SRC/include/extractor/suffix_table.hpp"
   mkdir -p "$SRC/build" && cd "$SRC/build"
   # GCC 13 / Boost 1.83 need relaxed warnings and an explicit <cstdint> for this release.
   cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/osrm -DBUILD_TESTING=OFF \
