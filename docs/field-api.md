@@ -14,7 +14,7 @@ Shared by the backend, the web dashboard and the Android app. All money is **int
 
 // Customer (store)
 { "id": 3, "clientUuid": "6f1c…", "name": "Aling Nena Store", "ownerName": "Nena Bautista",
-  "phone": "0917…", "address": "Brgy. San Jose, Jaro", "notes": null, "active": true,
+  "phone": "0917…", "address": "Brgy. Bantayan, Dumaguete City", "notes": null, "active": true,
   "createdAt": "…", "updatedAt": "…" }
 
 // Order

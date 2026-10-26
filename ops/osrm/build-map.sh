@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Downloads the Philippines OSM extract, cuts it to the Panay island bbox, and preprocesses it (car, MLD).
+# Downloads the Philippines OSM extract, cuts it to the Negros + Siquijor bbox, and preprocesses it (car, MLD).
 # Re-run monthly to refresh roads (see cron line in CLAUDE.md). Widen BBOX to cover more islands;
 # the whole Philippines needs ~6–8 GB RAM to preprocess.
 set -euo pipefail
-BBOX="121.80,10.40,123.20,11.95"   # minLon,minLat,maxLon,maxLat — Panay (Iloilo, Capiz, Aklan, Antique)
+BBOX="122.35,8.95,123.80,11.05"   # minLon,minLat,maxLon,maxLat — Negros island (Dumaguete) + Siquijor
 D=/opt/osrm/data
 mkdir -p $D && cd $D
 curl -sSL -z philippines-latest.osm.pbf -o philippines-latest.osm.pbf https://download.geofabrik.de/asia/philippines-latest.osm.pbf

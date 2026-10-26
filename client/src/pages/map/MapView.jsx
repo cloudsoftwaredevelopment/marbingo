@@ -5,7 +5,7 @@ import api from '../../lib/api';
 import { agentIcon, dotIcon, letterIcon, stopIcon, storeIcon } from './icons';
 import { RING, agentName, fmtDay, fmtDur, fmtTime, relTime, storeInitials } from './util';
 
-export const DEFAULT_CENTER = [10.7246, 122.557];
+export const DEFAULT_CENTER = [9.3105, 123.3070]; // Dumaguete City
 
 function Controller({ armed, onMapClick, focus, fit, registry }) {
   const map = useMap();

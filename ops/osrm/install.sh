@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time: build OSRM v5.27.1 from source into /opt/osrm, build the Panay map, install the systemd service.
+# One-time: build OSRM v5.27.1 from source into /opt/osrm, build the Negros + Siquijor map, install the systemd service.
 # Run as root:  bash /var/www/marbingo/ops/osrm/install.sh      (~30–60 min, mostly compiling)
 set -euo pipefail
 VER=5.27.1
@@ -29,5 +29,5 @@ install -m 644 /var/www/marbingo/ops/osrm/osrm-routed.service /etc/systemd/syste
 systemctl daemon-reload
 systemctl enable --now osrm-routed
 sleep 3
-curl -s "http://127.0.0.1:5010/route/v1/driving/122.5621,10.7202;122.5683,10.7280?overview=false" | head -c 200; echo
+curl -s "http://127.0.0.1:5010/route/v1/driving/123.3054,9.3068;123.2965,9.3175?overview=false" | head -c 200; echo
 echo "OSRM ready. Add OSRM_URL=http://127.0.0.1:5010 to /var/www/marbingo/server/.env and pm2 restart marbingo."

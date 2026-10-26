@@ -69,7 +69,7 @@ cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-
 
 ## Ecosystem Map (tracking)
 Contract: `docs/tracking-api.md`. Agents' tablets record GPS **only inside the work schedule** (`settings.tracking_schedule`, edited in Admin → Tracking; server also rejects out-of-hours points). `location_points` are purged after 365 days (`server/src/jobs/retention.js`); `agent_stops` (derived by `lib/tracking.js#detectStops`: ≥3 min within 60 m, matched to a store ≤75 m) are kept. Stops are recomputed per agent-day (debounced after uploads, single-flight, also on read when stale); routes cached in `track_cache`.
-- Road snapping: `server/src/lib/osrm.js` calls OSRM at `OSRM_URL` (`/match`); without it the map shows the raw GPS trail (`snapped:false`). OSRM is **not installed yet** — run `bash ops/osrm/install.sh` (builds OSRM 5.27.1 into `/opt/osrm`, Panay map, systemd `osrm-routed` on 127.0.0.1:5010), then add `OSRM_URL=http://127.0.0.1:5010` to `server/.env`, `pm2 restart marbingo`, and reseed so demo tracks follow roads. Refresh roads monthly: `bash ops/osrm/build-map.sh`.
+- Road snapping: `server/src/lib/osrm.js` calls OSRM at `OSRM_URL` (`/match`); without it the map shows the raw GPS trail (`snapped:false`). OSRM is **not installed yet** — run `bash ops/osrm/install.sh` (builds OSRM 5.27.1 into `/opt/osrm`, Negros + Siquijor map, systemd `osrm-routed` on 127.0.0.1:5010), then add `OSRM_URL=http://127.0.0.1:5010` to `server/.env`, `pm2 restart marbingo`, and reseed so demo tracks follow roads. Refresh roads monthly: `bash ops/osrm/build-map.sh`.
 - Web page `/map` (MANAGER only): Leaflet + OSM tiles (respect the OSM tile usage policy; switch to a tile provider if usage grows).
 
 ### Handset checklist (can't be tested here)

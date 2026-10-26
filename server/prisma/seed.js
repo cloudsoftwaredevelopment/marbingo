@@ -31,22 +31,22 @@ const ITEMS = [
 const NO_WHOLESALE = new Set([4, 8, 11]);
 
 const STORES = [
-  ['Aling Nena Store', 'Nena Bautista', '0917 301 4482', 'Brgy. San Jose, Jaro, Iloilo City'],
-  ['Mang Berting Sari-Sari', 'Alberto Ganzon', '0928 554 1907', 'Lopez Jaena St., Jaro, Iloilo City'],
-  ['Tindahan ni Lourdes', 'Lourdes Tacang', '0935 220 6613', 'Brgy. Tacas, Jaro, Iloilo City'],
-  ['JR Mini Mart', 'Jun-Jun Sabando', '0919 874 3321', 'Brgy. Quintin Salas, Jaro, Iloilo City'],
-  ['Kuya Dodong Store', 'Rodolfo Alingasa', '0905 417 8826', 'Brgy. Bito-on, Jaro, Iloilo City'],
-  ['Ate Beth Variety Store', 'Elizabeth Fernandez', '0917 663 2094', 'Brgy. Balabago, Jaro, Iloilo City'],
-  ['Mercy Grocery', 'Mercedes Lacson', '0926 190 7745', 'E. Lopez St., Jaro, Iloilo City'],
-  ['Sampaguita Sari-Sari', 'Rosalinda Jalandoni', '0945 338 5158', 'Brgy. Cubay, Jaro, Iloilo City']
+  ['Aling Nena Store', 'Nena Bautista', '0917 301 4482', 'Brgy. Bantayan, Dumaguete City'],
+  ['Mang Berting Sari-Sari', 'Alberto Ganzon', '0928 554 1907', 'Brgy. Daro, Dumaguete City'],
+  ['Tindahan ni Lourdes', 'Lourdes Tacang', '0935 220 6613', 'Brgy. Piapi, Dumaguete City'],
+  ['JR Mini Mart', 'Jun-Jun Sabando', '0919 874 3321', 'Brgy. Calindagan, Dumaguete City'],
+  ['Kuya Dodong Store', 'Rodolfo Alingasa', '0905 417 8826', 'Brgy. Bagacay, Dumaguete City'],
+  ['Ate Beth Variety Store', 'Elizabeth Fernandez', '0917 663 2094', 'Brgy. Taclobo, Dumaguete City'],
+  ['Mercy Grocery', 'Mercedes Lacson', '0926 190 7745', 'Brgy. Looc, Dumaguete City'],
+  ['Sampaguita Sari-Sari', 'Rosalinda Jalandoni', '0945 338 5158', 'Brgy. Camanjac, Dumaguete City']
 ];
 
-// Jaro, Iloilo City. The last store is left unplaced on purpose. Source: gps (agent) or manual (web pin).
+// Dumaguete City barangays. The last store is left unplaced on purpose. Source: gps (agent) or manual (web pin).
 const STORE_COORDS = [
-  [10.7395, 122.5528, 'gps', 9], [10.7262, 122.5588, 'gps', 7], [10.7449, 122.5486, 'gps', 12], [10.7503, 122.5602, 'gps', 6],
-  [10.7561, 122.5447, 'gps', 14], [10.7205, 122.5445, 'manual', null], [10.7231, 122.5619, 'manual', null], null
+  [9.3232, 123.3020, 'gps', 9], [9.3270, 123.3077, 'gps', 7], [9.2995, 123.3035, 'gps', 12], [9.3110, 123.2905, 'gps', 6],
+  [9.3045, 123.2850, 'gps', 14], [9.3150, 123.2985, 'manual', null], [9.2930, 123.3040, 'manual', null], null
 ];
-const SHOP = { lat: 10.7246, lng: 122.557 };
+const SHOP = { lat: 9.3105, lng: 123.3070 }; // near the public market, Dumaguete City
 const WORK = { start: 7 * 60, end: 18 * 60 };
 const TICK_S = 15;
 

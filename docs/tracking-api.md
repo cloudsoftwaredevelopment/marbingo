@@ -21,7 +21,7 @@ The setting key is `tracking_schedule`. Its default is Mon–Sat 07:00–18:00, 
 
 `POST /api/tracking/points` (AGENT, MANAGER)
 ```jsonc
-{ "points": [ { "recordedAt": "…", "lat": 10.72, "lng": 122.56,
+{ "points": [ { "recordedAt": "…", "lat": 9.3105, "lng": 123.307,
                 "accuracy": 8.5, "speed": 3.1, "bearing": 270, "battery": 82 } ] }   // at most 500
 ```
 → `{ "accepted": 120, "duplicates": 3, "rejected": 2 }`.
