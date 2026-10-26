@@ -98,6 +98,7 @@ model Item {
   saleLines      SaleLine[]
   stockMoves     StockMove[]
   orderLines     OrderLine[]
+  packs          ItemPack[]
 
   @@map("items")
 }
@@ -119,14 +120,16 @@ model Sale {
 }
 
 model SaleLine {
-  id        Int  @id @default(autoincrement())
-  saleId    Int  @map("sale_id")
-  sale      Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  itemId    Int  @map("item_id")
-  item      Item @relation(fields: [itemId], references: [id])
+  id        Int   @id @default(autoincrement())
+  saleId    Int   @map("sale_id")
+  sale      Sale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemId    Int   @map("item_id")
+  item      Item  @relation(fields: [itemId], references: [id])
   qty       Int
-  unitPrice Int  @map("unit_price")
-  lineTotal Int  @map("line_total")
+  unitPrice Int   @map("unit_price")
+  lineTotal Int   @map("line_total")
+  /// Pack pricing parts [{packTypeId,name,size,count,price,amount}] (lib/pricing.js); null for legacy rows.
+  breakdown Json?
 
   @@index([itemId])
   @@map("sale_lines")
@@ -219,6 +222,10 @@ model OrderLine {
   unitPrice    Int   @map("unit_price")
   lineTotal    Int   @map("line_total")
   deliveredQty Int?  @map("delivered_qty")
+  /// Pack pricing parts for the ordered qty (lib/pricing.js).
+  breakdown    Json?
+  /// Snapshot {retail, packs[]} at order time; partial deliveries are re-priced from it.
+  pricing      Json?
 
   @@map("order_lines")
 }
@@ -274,4 +281,31 @@ model TrackCache {
 
   @@id([agentId, day])
   @@map("track_cache")
+}
+
+/// Admin-managed pack names (Dozen, Box, Crate, Case, Sack, …). Each item sets its own size/price in ItemPack.
+model PackType {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  defaultSize Int?       @map("default_size")
+  sort        Int        @default(0)
+  active      Boolean    @default(true)
+  itemPacks   ItemPack[]
+
+  @@map("pack_types")
+}
+
+/// A wholesale pack for one item: `size` base units sold together for `price` centavos.
+model ItemPack {
+  id         Int      @id @default(autoincrement())
+  itemId     Int      @map("item_id")
+  item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  packTypeId Int      @map("pack_type_id")
+  packType   PackType @relation(fields: [packTypeId], references: [id])
+  size       Int
+  price      Int
+
+  @@unique([itemId, packTypeId])
+  @@unique([itemId, size])
+  @@map("item_packs")
 }

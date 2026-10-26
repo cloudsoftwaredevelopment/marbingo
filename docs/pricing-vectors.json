@@ -1,0 +1,833 @@
+{
+ "version": 1,
+ "note": "Shared pricing test vectors: server/src/lib/pricing.js, client/src/lib/pricing.js and android core Pricing.kt must all produce exactly these results. Money in centavos.",
+ "cases": [
+  {
+   "name": "no packs",
+   "qty": 7,
+   "retail": 6200,
+   "packs": [],
+   "expect": {
+    "total": 43400,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 7,
+      "price": 6200,
+      "amount": 43400
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "qty 0",
+   "qty": 0,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 0,
+    "parts": []
+   },
+   "upsell": null
+  },
+  {
+   "name": "qty 1 loose",
+   "qty": 1,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 6200,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 1,
+      "price": 6200,
+      "amount": 6200
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "rice 49 kg loose, upsell to a sack",
+   "qty": 49,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 303800,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 49,
+      "price": 6200,
+      "amount": 303800
+     }
+    ]
+   },
+   "upsell": {
+    "addQty": 1,
+    "total": 290000,
+    "saving": 13800
+   }
+  },
+  {
+   "name": "rice exactly one sack",
+   "qty": 50,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 290000,
+    "parts": [
+     {
+      "packTypeId": 5,
+      "name": "Sack",
+      "size": 50,
+      "count": 1,
+      "price": 290000,
+      "amount": 290000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "rice 53 kg = sack + 3 kg",
+   "qty": 53,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 308600,
+    "parts": [
+     {
+      "packTypeId": 5,
+      "name": "Sack",
+      "size": 50,
+      "count": 1,
+      "price": 290000,
+      "amount": 290000
+     },
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 3,
+      "price": 6200,
+      "amount": 18600
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "rice 47 kg loose (a part sack cannot be sold)",
+   "qty": 47,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 291400,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 47,
+      "price": 6200,
+      "amount": 291400
+     }
+    ]
+   },
+   "upsell": {
+    "addQty": 3,
+    "total": 290000,
+    "saving": 1400
+   }
+  },
+  {
+   "name": "rice 150 kg = 3 sacks",
+   "qty": 150,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 870000,
+    "parts": [
+     {
+      "packTypeId": 5,
+      "name": "Sack",
+      "size": 50,
+      "count": 3,
+      "price": 290000,
+      "amount": 870000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "greedy trap 30 = 3 boxes not case+6",
+   "qty": 30,
+   "retail": 1000,
+   "packs": [
+    {
+     "packTypeId": 4,
+     "name": "Case",
+     "size": 24,
+     "price": 20000
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 8000
+    }
+   ],
+   "expect": {
+    "total": 24000,
+    "parts": [
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 10,
+      "count": 3,
+      "price": 8000,
+      "amount": 24000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "greedy trap 34 = case + box (tie: fewer loose)",
+   "qty": 34,
+   "retail": 1000,
+   "packs": [
+    {
+     "packTypeId": 4,
+     "name": "Case",
+     "size": 24,
+     "price": 20000
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 8000
+    }
+   ],
+   "expect": {
+    "total": 28000,
+    "parts": [
+     {
+      "packTypeId": 4,
+      "name": "Case",
+      "size": 24,
+      "count": 1,
+      "price": 20000,
+      "amount": 20000
+     },
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 10,
+      "count": 1,
+      "price": 8000,
+      "amount": 8000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "greedy trap 48 = 2 cases (tie: fewer loose)",
+   "qty": 48,
+   "retail": 1000,
+   "packs": [
+    {
+     "packTypeId": 4,
+     "name": "Case",
+     "size": 24,
+     "price": 20000
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 8000
+    }
+   ],
+   "expect": {
+    "total": 40000,
+    "parts": [
+     {
+      "packTypeId": 4,
+      "name": "Case",
+      "size": 24,
+      "count": 2,
+      "price": 20000,
+      "amount": 40000
+     }
+    ]
+   },
+   "upsell": {
+    "addQty": 2,
+    "total": 40000,
+    "saving": 0
+   }
+  },
+  {
+   "name": "greedy trap 9 loose",
+   "qty": 9,
+   "retail": 1000,
+   "packs": [
+    {
+     "packTypeId": 4,
+     "name": "Case",
+     "size": 24,
+     "price": 20000
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 8000
+    }
+   ],
+   "expect": {
+    "total": 9000,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 9,
+      "price": 1000,
+      "amount": 9000
+     }
+    ]
+   },
+   "upsell": {
+    "addQty": 1,
+    "total": 8000,
+    "saving": 1000
+   }
+  },
+  {
+   "name": "dozen 11 loose",
+   "qty": 11,
+   "retail": 1600,
+   "packs": [
+    {
+     "packTypeId": 1,
+     "name": "Dozen",
+     "size": 12,
+     "price": 17400
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 72,
+     "price": 100800
+    }
+   ],
+   "expect": {
+    "total": 17600,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 11,
+      "price": 1600,
+      "amount": 17600
+     }
+    ]
+   },
+   "upsell": {
+    "addQty": 1,
+    "total": 17400,
+    "saving": 200
+   }
+  },
+  {
+   "name": "dozen 12",
+   "qty": 12,
+   "retail": 1600,
+   "packs": [
+    {
+     "packTypeId": 1,
+     "name": "Dozen",
+     "size": 12,
+     "price": 17400
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 72,
+     "price": 100800
+    }
+   ],
+   "expect": {
+    "total": 17400,
+    "parts": [
+     {
+      "packTypeId": 1,
+      "name": "Dozen",
+      "size": 12,
+      "count": 1,
+      "price": 17400,
+      "amount": 17400
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "dozen 30 = 2 dozen + 6",
+   "qty": 30,
+   "retail": 1600,
+   "packs": [
+    {
+     "packTypeId": 1,
+     "name": "Dozen",
+     "size": 12,
+     "price": 17400
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 72,
+     "price": 100800
+    }
+   ],
+   "expect": {
+    "total": 44400,
+    "parts": [
+     {
+      "packTypeId": 1,
+      "name": "Dozen",
+      "size": 12,
+      "count": 2,
+      "price": 17400,
+      "amount": 34800
+     },
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 6,
+      "price": 1600,
+      "amount": 9600
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "box 72",
+   "qty": 72,
+   "retail": 1600,
+   "packs": [
+    {
+     "packTypeId": 1,
+     "name": "Dozen",
+     "size": 12,
+     "price": 17400
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 72,
+     "price": 100800
+    }
+   ],
+   "expect": {
+    "total": 100800,
+    "parts": [
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 72,
+      "count": 1,
+      "price": 100800,
+      "amount": 100800
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "box + dozen + loose 89",
+   "qty": 89,
+   "retail": 1600,
+   "packs": [
+    {
+     "packTypeId": 1,
+     "name": "Dozen",
+     "size": 12,
+     "price": 17400
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 72,
+     "price": 100800
+    }
+   ],
+   "expect": {
+    "total": 126200,
+    "parts": [
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 72,
+      "count": 1,
+      "price": 100800,
+      "amount": 100800
+     },
+     {
+      "packTypeId": 1,
+      "name": "Dozen",
+      "size": 12,
+      "count": 1,
+      "price": 17400,
+      "amount": 17400
+     },
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 5,
+      "price": 1600,
+      "amount": 8000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "pack dearer than retail is never used",
+   "qty": 25,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 1200
+    }
+   ],
+   "expect": {
+    "total": 2500,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 25,
+      "price": 100,
+      "amount": 2500
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "pack equal to retail: tie prefers packing",
+   "qty": 20,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 1000
+    }
+   ],
+   "expect": {
+    "total": 2000,
+    "parts": [
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 10,
+      "count": 2,
+      "price": 1000,
+      "amount": 2000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "two packs same unit price: tie prefers larger",
+   "qty": 40,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 3,
+     "name": "Crate",
+     "size": 20,
+     "price": 1800
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 900
+    }
+   ],
+   "expect": {
+    "total": 3600,
+    "parts": [
+     {
+      "packTypeId": 3,
+      "name": "Crate",
+      "size": 20,
+      "count": 2,
+      "price": 1800,
+      "amount": 3600
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "crate + box 30",
+   "qty": 30,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 3,
+     "name": "Crate",
+     "size": 20,
+     "price": 1800
+    },
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 900
+    }
+   ],
+   "expect": {
+    "total": 2700,
+    "parts": [
+     {
+      "packTypeId": 3,
+      "name": "Crate",
+      "size": 20,
+      "count": 1,
+      "price": 1800,
+      "amount": 1800
+     },
+     {
+      "packTypeId": 2,
+      "name": "Box",
+      "size": 10,
+      "count": 1,
+      "price": 900,
+      "amount": 900
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "invalid packs ignored (size<2, price<=0)",
+   "qty": 5,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 9,
+     "name": "Bad",
+     "size": 1,
+     "price": 50
+    },
+    {
+     "packTypeId": 8,
+     "name": "Free",
+     "size": 3,
+     "price": 0
+    }
+   ],
+   "expect": {
+    "total": 500,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 5,
+      "price": 100,
+      "amount": 500
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "fractional qty floors",
+   "qty": 2.7,
+   "retail": 100,
+   "packs": [],
+   "expect": {
+    "total": 200,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 2,
+      "price": 100,
+      "amount": 200
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "large qty exact 100000 rice",
+   "qty": 100000,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 580000000,
+    "parts": [
+     {
+      "packTypeId": 5,
+      "name": "Sack",
+      "size": 50,
+      "count": 2000,
+      "price": 290000,
+      "amount": 580000000
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "large qty greedy 100053 rice",
+   "qty": 100053,
+   "retail": 6200,
+   "packs": [
+    {
+     "packTypeId": 5,
+     "name": "Sack",
+     "size": 50,
+     "price": 290000
+    }
+   ],
+   "expect": {
+    "total": 580308600,
+    "parts": [
+     {
+      "packTypeId": 5,
+      "name": "Sack",
+      "size": 50,
+      "count": 2001,
+      "price": 290000,
+      "amount": 580290000
+     },
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 3,
+      "price": 6200,
+      "amount": 18600
+     }
+    ]
+   },
+   "upsell": null
+  },
+  {
+   "name": "large qty greedy skips dear pack",
+   "qty": 100005,
+   "retail": 100,
+   "packs": [
+    {
+     "packTypeId": 2,
+     "name": "Box",
+     "size": 10,
+     "price": 1200
+    }
+   ],
+   "expect": {
+    "total": 10000500,
+    "parts": [
+     {
+      "packTypeId": null,
+      "name": null,
+      "size": 1,
+      "count": 100005,
+      "price": 100,
+      "amount": 10000500
+     }
+    ]
+   },
+   "upsell": null
+  }
+ ]
+}

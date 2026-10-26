@@ -8,8 +8,8 @@ Shared by the backend, the web dashboard and the Android app. All money is **int
 // Item (sync/pull)
 { "id": 1, "name": "Jasmine rice, 1 kg", "sku": "4800016000017", "unit": "pc",
   "categoryId": 1, "category": "Rice & grains",
-  "sellingPrice": 6200, "wholesalePrice": 5600,   // wholesalePrice may be null
-  "fieldPrice": 5600,                             // = wholesalePrice ?? sellingPrice (what orders use)
+  "sellingPrice": 6200,                           // retail per base unit
+  "packs": [ { "id": 3, "packTypeId": 5, "name": "Sack", "size": 50, "price": 290000 } ],   // see docs/pricing.md
   "qtyOnHand": 594, "imageUrl": "/uploads/items/x.webp", "updatedAt": "…" }
 
 // Customer (store)
