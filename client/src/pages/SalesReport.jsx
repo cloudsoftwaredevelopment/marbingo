@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api, { apiError } from '../lib/api';
-import { num, pesoCompact, pesoWhole } from '../lib/format';
+import { num, pesoCompact, pesoWhole, plural, unitPlural } from '../lib/format';
 
 const D = "'Bricolage Grotesque', system-ui, sans-serif";
 const M = "'IBM Plex Mono', ui-monospace, monospace";
@@ -15,7 +15,15 @@ const TABS = [
 const ymd = (d) => new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10);
 const cardStyle = { background: '#FFFEFB', border: '1px solid #DDD8CC', borderRadius: 14 };
 const h2Style = { margin: 0, fontFamily: D, fontWeight: 600, fontSize: 20 };
-const GRID = '40px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr)';
+const GRID = '40px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1.2fr) minmax(0, 1.6fr)';
+const ITEM_GRID = GRID; // Sales by item has the extra "Sold as" column
+const STORE_GRID = '40px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr)';
+// "12 Sacks · 340 kg loose"; "—" when the item has no breakdown data.
+const soldAs = (r) => {
+  const bits = (r.soldAs || []).map((x) => `${x.count} ${plural(x.name, x.count)}`);
+  if (r.loose > 0) bits.push(`${num(r.loose)}${r.unit ? ' ' + unitPlural(r.unit) : ''} loose`);
+  return bits.length ? bits.join(' · ') : '—';
+};
 
 function Skeleton({ h }) {
   return <div aria-hidden="true" style={{ height: h, borderRadius: 10, background: '#ECE8DF' }} />;
@@ -139,20 +147,21 @@ export default function SalesReport() {
               <span style={{ fontSize: 13, color: '#5E5A52' }}>Sorted by revenue</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <div style={{ minWidth: 640, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
-                  <span>#</span><span>Item</span><span style={{ textAlign: 'right' }}>Units sold</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of sales</span>
+              <div style={{ minWidth: 820, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: ITEM_GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
+                  <span>#</span><span>Item</span><span style={{ textAlign: 'right' }}>Units sold</span><span>Sold as</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of sales</span>
                 </div>
                 {items.map((r, i) => {
                   const share = t.gross ? (r.revenue / t.gross) * 100 : 0;
                   return (
-                    <div key={r.id} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ECE8DF' }}>
+                    <div key={r.id} style={{ display: 'grid', gridTemplateColumns: ITEM_GRID, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ECE8DF' }}>
                       <span style={{ font: `500 13px ${M}`, color: '#5E5A52' }}>{i + 1}</span>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</span>
                         <span style={{ fontSize: 12, color: '#5E5A52' }}>{r.category}</span>
                       </div>
                       <span style={{ textAlign: 'right', font: `500 14px ${M}` }}>{num(r.units)}</span>
+                      <span style={{ fontSize: 13, color: '#5E5A52', overflowWrap: 'anywhere' }}>{soldAs(r)}</span>
                       <span style={{ textAlign: 'right', font: `500 14px ${M}` }}>{pesoWhole(r.revenue)}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div aria-hidden="true" style={{ flex: '1 1 auto', height: 8, background: '#ECE8DF', borderRadius: 4, overflow: 'hidden' }}>
@@ -177,11 +186,11 @@ export default function SalesReport() {
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <div style={{ minWidth: 640, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: STORE_GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
                       <span>#</span><span>Store</span><span style={{ textAlign: 'right' }}>Orders</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of field sales</span>
                     </div>
                     {stores.map((r, i) => (
-                      <div key={r.id} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ECE8DF' }}>
+                      <div key={r.id} style={{ display: 'grid', gridTemplateColumns: STORE_GRID, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ECE8DF' }}>
                         <span style={{ font: `500 13px ${M}`, color: '#5E5A52' }}>{i + 1}</span>
                         <span style={{ fontSize: 15, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{r.name}</span>
                         <span style={{ textAlign: 'right', font: `500 14px ${M}` }}>{num(r.orders)}</span>

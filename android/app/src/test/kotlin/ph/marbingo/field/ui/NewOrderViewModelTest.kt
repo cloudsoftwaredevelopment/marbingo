@@ -23,8 +23,8 @@ class NewOrderViewModelTest {
     @Before fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     @After fun tearDown() { Dispatchers.resetMain() }
 
-    private val rice = Sample.items[0]   // 25000
-    private val oil = Sample.items[1]    // 9500
+    private val rice = Sample.items[0]   // ₱62.00/kg, Sack 50 kg ₱2,900
+    private val oil = Sample.items[1]    // ₱105.00, no packs
 
     @Test fun addMergesSameItem() {
         val vm = NewOrderViewModel(FakeDeps())
@@ -33,7 +33,7 @@ class NewOrderViewModelTest {
         assertEquals(2, s.cart.size)
         assertEquals(2, s.cart.first { it.item.id == rice.id }.qty)
         assertEquals(3, s.count)
-        assertEquals(25000L * 2 + 9500, s.total)
+        assertEquals(6200L * 2 + 10500, s.total)
     }
 
     @Test fun qtyClampsToOneAndMax() {
@@ -89,10 +89,34 @@ class NewOrderViewModelTest {
         val id = vm.state.value.savedUuid
         assertNotNull(id)
         val o = deps.orders.observe(id!!).first()!!
-        assertEquals(50000L, o.total)
+        assertEquals(6200L * 2, o.total)
         assertEquals("leave at back door", o.notes)
         assertEquals(OrderStatus.PENDING, o.status)
         assertEquals(SyncState.QUEUED, o.syncState)
+    }
+
+    @Test fun totalsUsePacksAndUpsellAddsToTheCart() {
+        val vm = NewOrderViewModel(FakeDeps())
+        vm.addItem(rice); vm.addItem(oil)
+        vm.setQty(rice.id, 53)
+        val line = vm.state.value.cart.first { it.item.id == rice.id }
+        assertEquals(290000L + 3 * 6200, line.total)
+        assertEquals(listOf("Sack", null), line.priced.parts.map { it.name })
+        assertNull(line.upsell) // 53 kg: nothing is cheaper by adding up to a sack's worth more
+        assertEquals(290000L + 3 * 6200 + 10500, vm.state.value.total)
+
+        vm.setQty(rice.id, 49) // 49 kg loose = 303,800; one sack = 290,000
+        val l49 = vm.state.value.cart.first { it.item.id == rice.id }
+        assertEquals(49 * 6200L, l49.total)
+        val up = l49.upsell!!
+        assertEquals(1, up.addQty); assertEquals(290000L, up.total); assertEquals(13800L, up.saving)
+        assertNull(vm.state.value.cart.first { it.item.id == oil.id }.upsell)
+
+        vm.applyUpsell(rice.id)
+        val after = vm.state.value.cart.first { it.item.id == rice.id }
+        assertEquals(50, after.qty); assertEquals(290000L, after.total)
+        assertEquals(listOf("Sack"), after.priced.parts.map { it.name })
+        assertEquals(290000L + 10500, vm.state.value.total)
     }
 
     @Test fun startWithStoreSkipsToItems() {

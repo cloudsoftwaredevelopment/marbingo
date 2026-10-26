@@ -80,7 +80,17 @@ object ReceiptPdf {
         divider()
         order.lines.forEach { l ->
             block(l.name, bold, gap = 1f)
-            twoCol("${l.qty}${l.unit?.let { " $it" } ?: ""} x ${Fmt.money(l.unitPrice)}", Fmt.money(l.lineTotal), mono, mono)
+            val parts = l.breakdown
+            if (parts.isNullOrEmpty()) {
+                twoCol("${l.qty}${l.unit?.let { " $it" } ?: ""} x ${Fmt.money(l.unitPrice)}", Fmt.money(l.lineTotal), mono, mono)
+            } else {
+                val u = l.unit ?: "pc"
+                parts.forEach { p ->
+                    val left = if (p.name != null) "  ${p.count} ${p.name} (${p.size} $u) x ${Fmt.money(p.price)}" else "  ${p.count} $u x ${Fmt.money(p.price)}"
+                    twoCol(left, Fmt.money(p.amount), mono, mono)
+                }
+                if (parts.size > 1) twoCol("  Item total", Fmt.money(l.lineTotal), mono, mono)
+            }
         }
         divider()
         twoCol("TOTAL", Fmt.money(order.total), paint(10f, bold = true), monoBold)

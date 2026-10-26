@@ -180,12 +180,27 @@ fun Slip(o: Order, session: Session?) {
             o.lines.forEach { l ->
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(l.name, style = MaterialTheme.typography.titleSmall)
-                    Row {
-                        Text(
-                            "${l.qty}${l.unit?.let { " $it" } ?: ""} × ${Fmt.money(l.unitPrice)}",
-                            Modifier.weight(1f), style = MbType.monoSmall, color = Mb.Muted,
-                        )
-                        Text(Fmt.money(l.lineTotal), style = MbType.mono)
+                    val parts = l.breakdown
+                    if (parts.isNullOrEmpty()) {
+                        Row {
+                            Text(
+                                "${l.qty}${l.unit?.let { " $it" } ?: ""} × ${Fmt.money(l.unitPrice)}",
+                                Modifier.weight(1f), style = MbType.monoSmall, color = Mb.Muted,
+                            )
+                            Text(Fmt.money(l.lineTotal), style = MbType.mono)
+                        }
+                    } else {
+                        parts.forEach { p ->
+                            Row {
+                                Text(Fmt.partLabel(p, l.unit),
+                                    Modifier.weight(1f).padding(start = 8.dp), style = MbType.monoSmall, color = Mb.Muted)
+                                Text(Fmt.money(p.amount), style = MbType.monoSmall)
+                            }
+                        }
+                        if (parts.size > 1) Row {
+                            Spacer(Modifier.weight(1f))
+                            Text(Fmt.money(l.lineTotal), style = MbType.mono)
+                        }
                     }
                 }
             }

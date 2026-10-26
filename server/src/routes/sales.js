@@ -3,6 +3,7 @@ const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap } = require('../lib/http');
 const { parseIso, dayOf, startOfDay } = require('../lib/periods');
+const { packInclude, priceItem } = require('../lib/packs');
 
 router.use(authenticate);
 
@@ -17,7 +18,7 @@ const shapeSale = (s) => ({
   total: s.total,
   channel: s.channel,
   lines: s.lines.map((l) => ({
-    itemId: l.itemId, name: l.item.name, qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal,
+    itemId: l.itemId, name: l.item.name, unit: l.item.unit, qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal, breakdown: l.breakdown,
   })),
 });
 
@@ -36,7 +37,7 @@ router.post('/', requireRole('MANAGER', 'CASHIER'), wrap(async (req, res) => {
   const channel = 'counter';
 
   const result = await prisma.$transaction(async (tx) => {
-    const items = await tx.item.findMany({ where: { id: { in: [...merged.keys()] } } });
+    const items = await tx.item.findMany({ where: { id: { in: [...merged.keys()] } }, include: packInclude });
     const byId = new Map(items.map((i) => [i.id, i]));
     const lines = [];
     for (const [itemId, qty] of merged) {
@@ -53,7 +54,8 @@ router.post('/', requireRole('MANAGER', 'CASHIER'), wrap(async (req, res) => {
         const fresh = await tx.item.findUnique({ where: { id: itemId } });
         throw new SaleError(409, `Not enough stock for "${item.name}" (${fresh.qtyOnHand} left).`);
       }
-      lines.push({ itemId, qty, unitPrice: item.sellingPrice, lineTotal: item.sellingPrice * qty });
+      const priced = priceItem(item, qty);
+      lines.push({ itemId, qty, unitPrice: item.sellingPrice, lineTotal: priced.total, breakdown: priced.parts });
     }
     const sale = await tx.sale.create({
       data: {

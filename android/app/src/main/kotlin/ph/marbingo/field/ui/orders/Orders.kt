@@ -143,17 +143,22 @@ fun OrderDetailScreen(vm: OrderDetailViewModel, nav: NavController) {
                             Column(Modifier.weight(1f)) {
                                 Text(l.name, style = MaterialTheme.typography.titleSmall)
                                 val unit = l.unit?.let { " $it" } ?: ""
+                                val dParts = l.deliveredBreakdown?.takeIf { delivered && l.deliveredQty != null }
                                 if (delivered && l.deliveredQty != null) {
                                     val short = l.deliveredQty < l.qty
                                     Text(
-                                        "Ordered ${l.qty}$unit · Delivered ${l.deliveredQty}$unit × ${Fmt.money(l.unitPrice)}",
+                                        "Ordered ${l.qty}$unit · Delivered ${l.deliveredQty}$unit",
                                         style = MbType.monoSmall, color = if (short) Mb.Warn else Mb.Muted,
                                     )
                                 } else {
-                                    Text("${l.qty}$unit × ${Fmt.money(l.unitPrice)}", style = MbType.monoSmall, color = Mb.Muted)
+                                    Text("${l.qty}$unit", style = MbType.monoSmall, color = Mb.Muted)
                                 }
+                                // Delivered orders show how the delivered quantity was priced; otherwise the ordered quantity.
+                                val parts = dParts ?: l.breakdown
+                                if (parts != null) Text(Fmt.breakdown(parts, l.unit), style = MbType.monoSmall, color = Mb.Muted)
+                                else Text("× ${Fmt.money(l.unitPrice)}", style = MbType.monoSmall, color = Mb.Muted)
                             }
-                            Text(Fmt.money(l.lineTotal), style = MbType.mono)
+                            Text(Fmt.money(l.deliveredBreakdown?.takeIf { delivered }?.sumOf { it.amount } ?: l.lineTotal), style = MbType.mono)
                         }
                     }
                     HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Mb.Line)

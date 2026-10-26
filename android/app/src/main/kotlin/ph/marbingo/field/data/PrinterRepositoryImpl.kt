@@ -44,7 +44,7 @@ class PrinterRepositoryImpl(private val context: Context, private val customers:
             storeAddress = address,
             agentName = order.agentName ?: session.name,
             orderedAt = display(order.orderedAt),
-            lines = order.lines.map { ReceiptLineItem(it.name, it.qty, it.unit, it.unitPrice, it.lineTotal) },
+            lines = order.lines.map { ReceiptLineItem(it.name, it.qty, it.unit, it.unitPrice, it.lineTotal, it.breakdown.orEmpty()) },
             total = order.total,
             notes = order.notes,
         )

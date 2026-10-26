@@ -3,6 +3,7 @@ package ph.marbingo.field.data
 import ph.marbingo.core.model.CustomerDto
 import ph.marbingo.core.model.ItemDto
 import ph.marbingo.core.model.OrderDto
+import ph.marbingo.core.pricing.PartsJson
 import ph.marbingo.field.data.db.*
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -20,11 +21,14 @@ object Iso {
     fun format(millis: Long): String = Instant.ofEpochMilli(millis).toString()
 }
 
-internal fun ItemEntity.toModel() = Item(id, name, sku, unit, category, fieldPrice, sellingPrice, qtyOnHand, imageUrl)
-
-internal fun ItemDto.toEntity() = ItemEntity(
-    id, name, sku, unit, categoryId, category, sellingPrice, wholesalePrice, fieldPrice, qtyOnHand, imageUrl, updatedAt,
+internal fun ItemWithPacks.toModel() = Item(
+    item.id, item.name, item.sku, item.unit, item.category, item.sellingPrice, item.qtyOnHand, item.imageUrl,
+    packs.sortedWith(compareBy({ -it.size }, { it.price })).map { Pack(it.packTypeId, it.name, it.size, it.price) },
 )
+
+internal fun ItemDto.toEntity() = ItemEntity(id, name, sku, unit, categoryId, category, sellingPrice, qtyOnHand, imageUrl, updatedAt)
+
+internal fun ItemDto.packEntities() = packs.map { ItemPackEntity(id, it.packTypeId, it.name, it.size, it.price) }
 
 internal fun CustomerEntity.toModel() = Store(clientUuid, serverId, name, ownerName, phone, address, notes, dirty, lat, lng, locationAccuracy)
 
@@ -49,7 +53,8 @@ internal fun OrderWithLines.toModel() = Order(
     syncError = order.syncError,
     notes = order.notes,
     total = order.total,
-    lines = lines.sortedBy { it.id }.map { OrderLine(it.itemId, it.name, it.unit, it.qty, it.unitPrice, it.lineTotal, it.deliveredQty) },
+    lines = lines.sortedBy { it.id }.map { OrderLine(it.itemId, it.name, it.unit, it.qty, it.unitPrice, it.lineTotal, it.deliveredQty,
+        PartsJson.decode(it.breakdown), PartsJson.decode(it.deliveredBreakdown)) },
     deliveredAt = order.deliveredAt,
     cancelledReason = order.cancelledReason,
 )
@@ -75,6 +80,7 @@ internal fun OrderDto.toEntities(existing: OrderEntity?, now: Long): Pair<OrderE
         updatedAt = Iso.parse(updatedAt) ?: now,
     )
     val rows = lines.map { OrderLineEntity(orderClientUuid = clientUuid, itemId = it.itemId, name = it.name, unit = it.unit,
-        qty = it.qty, unitPrice = it.unitPrice, lineTotal = it.lineTotal, deliveredQty = it.deliveredQty) }
+        qty = it.qty, unitPrice = it.unitPrice, lineTotal = it.lineTotal, deliveredQty = it.deliveredQty,
+        breakdown = PartsJson.encode(it.breakdown), deliveredBreakdown = PartsJson.encode(it.deliveredBreakdown)) }
     return entity to rows
 }

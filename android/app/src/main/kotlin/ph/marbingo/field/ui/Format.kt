@@ -1,5 +1,6 @@
 package ph.marbingo.field.ui
 
+import ph.marbingo.core.model.PricePartDto
 import ph.marbingo.field.data.*
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -44,6 +45,25 @@ object Fmt {
 
     /** 12.4 -> "±12 m". */
     fun accuracy(metres: Double?): String? = metres?.let { "±${Math.round(it)} m" }
+
+    /** "1 × Sack (50 kg) ₱2,900.00 + 3 kg × ₱62.00": the price breakdown of one line. */
+    fun breakdown(parts: List<PricePartDto>, unit: String?): String =
+        parts.joinToString(" + ") { if (it.name != null) "${partLabel(it, unit)} ${money(it.amount)}" else partLabel(it, unit) }
+
+    /** "1 × Sack (50 kg)" for a pack, "3 kg × ₱62.00" for loose units. */
+    fun partLabel(p: PricePartDto, unit: String?): String {
+        val u = unit ?: "pc"
+        return if (p.name != null) "${p.count} × ${p.name} (${p.size} $u)" else "${p.count} $u × ${money(p.price)}"
+    }
+
+    /** "Sack 50 kg ₱2,900". Whole pesos when the price has no centavos. */
+    fun packLabel(p: Pack, unit: String?): String {
+        val price = if (p.price % 100 == 0L) money(p.price).removeSuffix(".00") else money(p.price)
+        return "${p.name} ${p.size} ${unit ?: "pc"} $price"
+    }
+
+    /** "₱62.00/kg" */
+    fun retail(item: Item): String = "${money(item.sellingPrice)}/${item.unit}"
 
     fun plural(n: Int, one: String, many: String = one + "s") = if (n == 1) "$n $one" else "$n $many"
 }

@@ -1,5 +1,11 @@
 package ph.marbingo.field.data
 
+import ph.marbingo.core.model.PricePartDto
+import ph.marbingo.core.pricing.PackDef
+import ph.marbingo.core.pricing.PriceResult
+import ph.marbingo.core.pricing.Pricing
+import ph.marbingo.core.pricing.Upsell
+
 // UI-facing models. Repositories (implemented in data/) map Room entities to these;
 // screens and ViewModels depend only on these and on the interfaces in Repositories.kt.
 
@@ -9,11 +15,16 @@ data class Item(
     val sku: String?,
     val unit: String,
     val category: String?,
-    val fieldPrice: Long,      // centavos: wholesale ?? selling
-    val sellingPrice: Long,
+    val sellingPrice: Long,    // centavos per base unit (retail)
     val qtyOnHand: Int,
     val imageUrl: String?,
-)
+    val packs: List<Pack> = emptyList(),
+) {
+    val packDefs: List<PackDef> get() = packs.map { PackDef(it.packTypeId, it.name, it.size, it.price) }
+}
+
+/** A wholesale bundle: [size] base units for [price] centavos in total. */
+data class Pack(val packTypeId: Int, val name: String, val size: Int, val price: Long)
 
 data class Store(
     val clientUuid: String,    // stable key, created on device or server
@@ -45,6 +56,10 @@ data class OrderLine(
     val unitPrice: Long,
     val lineTotal: Long,
     val deliveredQty: Int?,
+    /** Price parts for the ordered qty; null for lines saved before pack pricing. */
+    val breakdown: List<PricePartDto>? = null,
+    /** Price parts for the delivered qty; null until delivered. */
+    val deliveredBreakdown: List<PricePartDto>? = null,
 )
 
 data class Order(
@@ -67,7 +82,13 @@ data class Order(
     val reference: String get() = serverId?.let { "#$it" } ?: "L-" + clientUuid.take(4).uppercase()
 }
 
-data class CartLine(val item: Item, val qty: Int)
+/** An item in the cart. [priced] (cheapest packs + loose) is computed once per instance; copy() recomputes it. */
+data class CartLine(val item: Item, val qty: Int) {
+    val priced: PriceResult = Pricing.priceQty(qty, item.sellingPrice, item.packDefs)
+    val total: Long get() = priced.total
+    /** "Add 1 kg and pay less" hint, computed only when asked for. */
+    val upsell: Upsell? by lazy(LazyThreadSafetyMode.NONE) { Pricing.suggestUpsell(qty, item.sellingPrice, item.packDefs) }
+}
 
 data class SyncStatus(
     val lastSyncedAt: Long?,   // epoch millis of last successful pull

@@ -42,7 +42,7 @@ interface OrderRepository {
     fun recent(limit: Int = 100): Flow<List<Order>>
     fun forStore(storeClientUuid: String): Flow<List<Order>>
     fun observe(clientUuid: String): Flow<Order?>
-    /** Prices lines at Item.fieldPrice, saves locally as QUEUED, schedules a sync, returns clientUuid. */
+    /** Prices each line with the cheapest pack mix (Pricing.priceQty), saves locally as QUEUED, schedules a sync, returns clientUuid. */
     suspend fun place(storeClientUuid: String, lines: List<CartLine>, notes: String?): String
     /** Cancels a pending order (online if synced; a queued order is just removed). */
     suspend fun cancel(clientUuid: String, reason: String)

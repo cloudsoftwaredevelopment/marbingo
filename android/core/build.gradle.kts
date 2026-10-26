@@ -22,6 +22,12 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
 }
 
+// docs/pricing-vectors.json stays the single source for the pricing tests of all three implementations;
+// the test reads it straight from there (path passed as a system property).
+android.testOptions.unitTests.all {
+    it.systemProperty("pricing.vectors", rootProject.file("../docs/pricing-vectors.json").absolutePath)
+}
+
 // No Compose here: networking, DTOs, money and receipt formatting stay pure so their
 // tests run on the plain JVM — the only kind of test this headless server can run.
 dependencies {

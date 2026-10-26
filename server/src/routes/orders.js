@@ -3,6 +3,7 @@ const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap, idParam } = require('../lib/http');
 const { parseIso, startOfDay } = require('../lib/periods');
+const { packInclude, repriceLine } = require('../lib/packs');
 const {
   priceLine, mergeLines, parseLocation, deliveryQuantities, parseDate, orderInclude, shapeOrder,
 } = require('../lib/orders');
@@ -85,7 +86,7 @@ async function processOrder(o, user, customerIds) {
 
   const merged = mergeLines(o.lines);
   if (merged.error) return fail_(merged.error);
-  const items = await prisma.item.findMany({ where: { id: { in: merged.lines.map((l) => l.itemId) } } });
+  const items = await prisma.item.findMany({ where: { id: { in: merged.lines.map((l) => l.itemId) } }, include: packInclude });
   const byId = new Map(items.map((i) => [i.id, i]));
   const bad = merged.lines.find((l) => !byId.has(l.itemId));
   if (bad) return fail_(`Unknown item ${bad.itemId}.`);
@@ -212,7 +213,8 @@ router.post('/:id/deliver', staff, wrap(async (req, res) => {
           const fresh = await tx.item.findUnique({ where: { id: l.itemId } });
           throw new OrderError(409, `Not enough stock for "${l.item.name}" (${fresh.qtyOnHand} left).`);
         }
-        saleLines.push({ itemId: l.itemId, qty, unitPrice: l.unitPrice, lineTotal: l.unitPrice * qty });
+        const priced = repriceLine(l, qty);
+        saleLines.push({ itemId: l.itemId, qty, unitPrice: l.unitPrice, lineTotal: priced.total, breakdown: priced.parts });
       }
       await tx.orderLine.update({ where: { id: l.id }, data: { deliveredQty: qty } });
     }

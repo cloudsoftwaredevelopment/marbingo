@@ -16,11 +16,24 @@ data class ItemEntity(
     val categoryId: Int?,
     val category: String?,
     val sellingPrice: Long,
-    val wholesalePrice: Long?,
-    val fieldPrice: Long,
     val qtyOnHand: Int,
     val imageUrl: String?,
     val updatedAt: String,
+)
+
+/** One wholesale bundle of an item (docs/pricing.md). Replaced wholesale whenever the item is upserted from the server. */
+@Entity(tableName = "item_packs", primaryKeys = ["itemId", "packTypeId"], indices = [Index("itemId")])
+data class ItemPackEntity(
+    val itemId: Int,
+    val packTypeId: Int,
+    val name: String,
+    val size: Int,
+    val price: Long,
+)
+
+data class ItemWithPacks(
+    @Embedded val item: ItemEntity,
+    @Relation(parentColumn = "id", entityColumn = "itemId") val packs: List<ItemPackEntity>,
 )
 
 @Entity(tableName = "customers", indices = [Index("serverId")])
@@ -82,6 +95,9 @@ data class OrderLineEntity(
     val unitPrice: Long,
     val lineTotal: Long,
     val deliveredQty: Int?,
+    /** JSON list of price parts for the ordered qty / the delivered qty (PartsJson); null for legacy lines. */
+    val breakdown: String? = null,
+    val deliveredBreakdown: String? = null,
 )
 
 @Entity(tableName = "sync_meta")

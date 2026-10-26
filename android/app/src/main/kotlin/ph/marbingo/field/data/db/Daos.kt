@@ -9,15 +9,25 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ItemDao {
-    @Query(
+    @Transaction @Query(
         "SELECT * FROM items WHERE name LIKE '%' || :q || '%' OR sku LIKE '%' || :q || '%' OR category LIKE '%' || :q || '%' " +
             "ORDER BY name COLLATE NOCASE LIMIT 300"
     )
-    fun search(q: String): Flow<List<ItemEntity>>
+    fun search(q: String): Flow<List<ItemWithPacks>>
 
-    @Query("SELECT * FROM items WHERE sku = :sku LIMIT 1") suspend fun bySku(sku: String): ItemEntity?
-    @Query("SELECT * FROM items WHERE id = :id") suspend fun byId(id: Int): ItemEntity?
+    @Transaction @Query("SELECT * FROM items WHERE sku = :sku LIMIT 1") suspend fun bySku(sku: String): ItemWithPacks?
+    @Transaction @Query("SELECT * FROM items WHERE id = :id") suspend fun byId(id: Int): ItemWithPacks?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<ItemEntity>)
+    @Query("DELETE FROM item_packs WHERE itemId IN (:itemIds)") suspend fun deletePacks(itemIds: List<Int>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertPacks(packs: List<ItemPackEntity>)
+
+    /** Upserts items and replaces each one's packs. Call inside a transaction. */
+    @Transaction
+    suspend fun upsertWithPacks(items: List<ItemEntity>, packs: List<ItemPackEntity>) {
+        items.map { it.id }.chunked(500).forEach { deletePacks(it) }
+        upsertAll(items)
+        insertPacks(packs)
+    }
 }
 
 @Dao

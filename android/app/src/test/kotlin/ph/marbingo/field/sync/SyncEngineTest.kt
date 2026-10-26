@@ -77,15 +77,15 @@ class SyncEngineTest {
         engine = SyncEngine(api, db, tokens)
         orders = OrderRepositoryImpl(db, api, tokens, trigger)
         stores = StoreRepositoryImpl(db.customers(), trigger)
-        runBlocking { db.items().upsertAll(listOf(itemDto(1, 5600).let { ph.marbingo.field.data.db.ItemEntity(1, "Rice", "480", "pc", null, null, 6200, 5600, 5600, 10, null, "x") })) }
+        runBlocking { db.items().upsertAll(listOf(itemDto(1, 5600).let { ph.marbingo.field.data.db.ItemEntity(1, "Rice", "480", "pc", null, null, 5600, 10, null, "x") })) }
     }
 
     @After fun tearDown() { server.shutdown(); db.close() }
 
     private fun itemDto(id: Int, price: Long) = id to price
 
-    private fun pullJson(time: String, customers: List<String>, orders: List<String>) =
-        """{"serverTime":"$time","items":[],"categories":[],"customers":[${customers.joinToString(",")}],"orders":[${orders.joinToString(",")}]}"""
+    private fun pullJson(time: String, customers: List<String>, orders: List<String>, items: List<String> = emptyList()) =
+        """{"serverTime":"$time","items":[${items.joinToString(",")}],"packTypes":[{"id":5,"name":"Sack","defaultSize":null,"sort":5,"active":true}],"categories":[],"customers":[${customers.joinToString(",")}],"orders":[${orders.joinToString(",")}]}"""
 
     private fun custJson(uuid: String, id: Int, name: String) =
         """{"id":$id,"clientUuid":"$uuid","name":"$name","ownerName":null,"phone":null,"address":null,"notes":null,"active":true,"createdAt":null,"updatedAt":"2026-10-26T00:00:00.000Z"}"""
@@ -252,4 +252,52 @@ class SyncEngineTest {
     }
 
     private fun prefsStore() = PrefsTokenStore(ApplicationProvider.getApplicationContext())
+
+    private fun itemJson(id: Int, retail: Long, packs: String) =
+        """{"id":$id,"name":"Rice","sku":"480","unit":"kg","categoryId":null,"category":null,"sellingPrice":$retail,"qtyOnHand":10,"imageUrl":null,"updatedAt":"2026-10-26T00:00:00.000Z","packs":[$packs]}"""
+
+    @Test fun pullStoresPacksReplacesThemAndKeepsBreakdowns() = runBlocking {
+        val sack = """{"id":3,"packTypeId":5,"name":"Sack","size":50,"price":290000}"""
+        val box = """{"id":4,"packTypeId":2,"name":"Box","size":10,"price":59000}"""
+        val bd = """[{"packTypeId":5,"name":"Sack","size":50,"count":1,"price":290000,"amount":290000},{"packTypeId":null,"name":null,"size":1,"count":3,"price":6200,"amount":18600}]"""
+        val dbd = """[{"packTypeId":null,"name":null,"size":1,"count":30,"price":6200,"amount":186000}]"""
+        val order = orderJson("o-9", 9, "c-9", 308600, "delivered")
+            .replace(""""deliveredQty":null}""", """"deliveredQty":30,"breakdown":$bd,"deliveredBreakdown":$dbd}""")
+        pullBody = pullJson("T2", listOf(custJson("c-9", 3, "Nena")), listOf(order), listOf(itemJson(1, 6200, "$sack,$box")))
+        assertTrue(engine.run() is SyncEngine.Outcome.Success)
+
+        val item = db.items().byId(1)!!.toModel()
+        assertEquals(6200L, item.sellingPrice)
+        assertEquals(listOf("Sack" to 50, "Box" to 10), item.packs.map { it.name to it.size }) // size descending
+        assertEquals(290000L, item.packs[0].price)
+
+        val line = orders.observe("o-9").first()!!.lines.single()
+        assertEquals(2, line.breakdown!!.size)
+        assertEquals("Sack", line.breakdown!![0].name); assertEquals(18600L, line.breakdown!![1].amount)
+        assertEquals(186000L, line.deliveredBreakdown!!.single().amount)
+
+        // The next pull replaces the item's packs (the Box is gone, the Sack price changed).
+        pullBody = pullJson("T3", emptyList(), emptyList(), listOf(itemJson(1, 6200, sack.replace("290000", "280000"))))
+        assertTrue(engine.run() is SyncEngine.Outcome.Success)
+        val again = db.items().byId(1)!!.toModel()
+        assertEquals(listOf("Sack"), again.packs.map { it.name }); assertEquals(280000L, again.packs[0].price)
+    }
+
+    @Test fun placePricesLocallyWithPacksAndStoresTheBreakdown() = runBlocking {
+        val s = stores.create("Aling Nena", null, null, null, null)
+        db.items().upsertWithPacks(
+            listOf(ph.marbingo.field.data.db.ItemEntity(7, "Jasmine rice", "481", "kg", null, null, 6200, 400, null, "x")),
+            listOf(ph.marbingo.field.data.db.ItemPackEntity(7, 5, "Sack", 50, 290000)),
+        )
+        val item = db.items().byId(7)!!.toModel()
+        // Two cart lines for the same item are merged before pricing: 20 + 33 = 53 kg.
+        val id = orders.place(s, listOf(CartLine(item, 20), CartLine(item, 33)), null)
+        val o = orders.observe(id).first()!!
+        val line = o.lines.single()
+        assertEquals(53, line.qty); assertEquals(6200L, line.unitPrice)
+        assertEquals(290000L + 3 * 6200, line.lineTotal); assertEquals(line.lineTotal, o.total)
+        assertEquals(listOf("Sack", null), line.breakdown!!.map { it.name })
+        assertEquals(listOf(1, 3), line.breakdown!!.map { it.count })
+        assertNull(line.deliveredBreakdown)
+    }
 }

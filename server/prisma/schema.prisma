@@ -77,28 +77,26 @@ model Category {
 
 /// Money fields are integer centavos.
 model Item {
-  id             Int         @id @default(autoincrement())
-  name           String
-  description    String?
-  categoryId     Int?        @map("category_id")
-  category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sku            String?     @unique
-  unit           String      @default("pc")
-  qtyOnHand      Int         @default(0) @map("qty_on_hand")
-  reorderLevel   Int         @default(0) @map("reorder_level")
-  costPrice      Int?        @map("cost_price")
-  sellingPrice   Int         @map("selling_price")
-  /// Price for field orders to stores; falls back to sellingPrice when null.
-  wholesalePrice Int?        @map("wholesale_price")
-  imageUrl       String?     @map("image_url")
-  createdById    Int?        @map("created_by")
-  createdBy      User?       @relation(fields: [createdById], references: [id])
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
-  saleLines      SaleLine[]
-  stockMoves     StockMove[]
-  orderLines     OrderLine[]
-  packs          ItemPack[]
+  id           Int         @id @default(autoincrement())
+  name         String
+  description  String?
+  categoryId   Int?        @map("category_id")
+  category     Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sku          String?     @unique
+  unit         String      @default("pc")
+  qtyOnHand    Int         @default(0) @map("qty_on_hand")
+  reorderLevel Int         @default(0) @map("reorder_level")
+  costPrice    Int?        @map("cost_price")
+  sellingPrice Int         @map("selling_price")
+  imageUrl     String?     @map("image_url")
+  createdById  Int?        @map("created_by")
+  createdBy    User?       @relation(fields: [createdById], references: [id])
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  saleLines    SaleLine[]
+  stockMoves   StockMove[]
+  orderLines   OrderLine[]
+  packs        ItemPack[]
 
   @@map("items")
 }

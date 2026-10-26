@@ -11,6 +11,7 @@ import ph.marbingo.core.net.TokenStore
 import ph.marbingo.field.data.Iso
 import ph.marbingo.field.data.OrderStatus
 import ph.marbingo.field.data.toEntities
+import ph.marbingo.field.data.packEntities
 import ph.marbingo.field.data.toEntity
 import ph.marbingo.field.data.db.AppDatabase
 import ph.marbingo.field.data.db.CustomerEntity
@@ -186,7 +187,7 @@ class SyncEngine(
         val resp = api.pull(meta.since)
         val t = now()
         db.withTransaction {
-            db.items().upsertAll(resp.items.map { it.toEntity() })
+            db.items().upsertWithPacks(resp.items.map { it.toEntity() }, resp.items.flatMap { it.packEntities() })
             for (c in resp.customers) {
                 val existing = db.customers().get(c.clientUuid)
                 if (existing?.dirty == true) continue // never clobber unsent local changes

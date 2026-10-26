@@ -1,5 +1,6 @@
 package ph.marbingo.core.print
 
+import ph.marbingo.core.model.PricePartDto
 import ph.marbingo.core.money.Money
 
 data class ReceiptLineItem(
@@ -8,6 +9,8 @@ data class ReceiptLineItem(
     val unit: String?,
     val unitPrice: Long,
     val lineTotal: Long,
+    /** Price breakdown (packs + loose units). Empty for legacy lines, which print as "qty x unit price". */
+    val parts: List<PricePartDto> = emptyList(),
 )
 
 data class ReceiptData(
@@ -49,8 +52,13 @@ object ReceiptFormatter {
         out += ReceiptLine(rule)
         for (l in r.lines) {
             wrap(l.name, columns).forEach { out += ReceiptLine(it) }
-            val left = "${l.qty} x ${Money.format(l.unitPrice)}"
-            out += ReceiptLine(twoCol(left, Money.format(l.lineTotal), columns))
+            if (l.parts.isEmpty()) {
+                val left = "${l.qty} x ${Money.format(l.unitPrice)}"
+                out += ReceiptLine(twoCol(left, Money.format(l.lineTotal), columns))
+            } else {
+                l.parts.forEach { partRows(it, l.unit ?: "pc", columns).forEach { r -> out += ReceiptLine(r) } }
+                if (l.parts.size > 1) out += ReceiptLine(twoCol("  Item total", Money.format(l.lineTotal), columns))
+            }
         }
         out += ReceiptLine(rule)
         out += ReceiptLine(twoCol("TOTAL", Money.format(r.total), columns), bold = true)
@@ -61,6 +69,21 @@ object ReceiptFormatter {
         out += ReceiptLine("")
         wrap(r.footer, columns).forEach { out += ReceiptLine(it, c) }
         return out
+    }
+
+    /**
+     * One indented row per breakdown part: "  1 Sack(50kg) x 2,900.00   2,900.00" or "  3 kg x 62.00      186.00".
+     * When a pack row is too wide for the paper, a single pack drops the redundant "x price"; otherwise the
+     * amount moves to its own right-aligned row.
+     */
+    internal fun partRows(p: PricePartDto, unit: String, columns: Int): List<String> {
+        val label = if (p.name != null) "${p.name}(${p.size}$unit)" else unit
+        val amount = Money.format(p.amount, "")
+        val full = "  ${p.count} $label x ${Money.format(p.price, "")}"
+        if (full.length + 1 + amount.length <= columns) return listOf(twoCol(full, amount, columns))
+        val short = "  ${p.count} $label"
+        if (p.name != null && p.count == 1 && short.length + 1 + amount.length <= columns) return listOf(twoCol(short, amount, columns))
+        return listOf(full.take(columns), amount.padStart(columns))
     }
 
     fun toPlainText(r: ReceiptData, columns: Int = COLUMNS): String =

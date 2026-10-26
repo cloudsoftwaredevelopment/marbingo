@@ -26,6 +26,7 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 - Sessions: `users.token_version` is in every JWT; bump it to revoke sessions (password change, reset, deactivation).
 - "Today" chart has `Before 7a` / `After 7p` buckets, shown only when they have sales, so bars always sum to Gross sales.
 - Client shows times/dates in Asia/Manila explicitly (`timeZone` option), never browser-local.
+- **Pack pricing** (`docs/pricing.md`): items sell retail per base unit (`selling_price`) plus optional packs (`item_packs`: admin-managed `pack_types` like Dozen/Box/Crate/Case/Sack, per-item size + whole-pack price). Every sale/order line is priced by `priceQty` (cheapest mix of packs + loose; DP, ties → fewer loose → fewer packs) and stores its `breakdown`. The engine exists 3× — `server/src/lib/pricing.js` (authoritative), `client/src/lib/pricing.js`, android `core/.../pricing/Pricing.kt` — and **all must pass `docs/pricing-vectors.json`** (`server npm test`, `client npm test`, `:core:testDebugUnitTest`). Change the reference, regenerate vectors, port. Order lines keep a `pricing` snapshot so partial deliveries re-price from order-time prices. Changing an item's packs or a pack type bumps `items.updated_at` so tablets re-sync them.
 - Roles: MANAGER, INVENTORY, CASHIER, AGENT. Server: `requireRole()`; client mirror: `client/src/lib/roles.js`.
 - Styling: tokens in `client/src/styles/tokens.css`, shared classes in `global.css`.
 
@@ -33,7 +34,7 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 | | Manager | Inventory | Cashier | Agent |
 |---|---|---|---|---|
 | Sales report | ✅ | ✅ | | |
-| Add item / restock | ✅ | ✅ | | |
+| Items list / add / edit (incl. pack prices) | ✅ | ✅ | | |
 | Record sale (web POS) | ✅ | | ✅ | |
 | Orders: view | all | all | | own (web read-only + Android app) |
 | Orders: take (Android app) | ✅ | | | ✅ |
@@ -41,13 +42,13 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 | Stores | ✅ | ✅ | | ✅ (app; edit own) |
 | Top 10 sidebar | turnover + revenue | turnover + revenue | turnover only | turnover only |
 | Ecosystem Map (`/map`) | ✅ | | | tracked (work hours) |
-| Admin (users, categories, shop name + logo letters, tracking schedule) | ✅ | | | |
+| Admin (users, categories, pack types, shop name + logo letters, tracking schedule) | ✅ | | | |
 
 ## Demo logins (password `marbingo123`)
 maria@ (Manager) · jose@ (Inventory) · ana@ (Cashier) · ramon@ (Agent) — all `@marbingo.test`.
 
 ## Field orders (how it works)
-Agent takes an order in the app (works offline) → it syncs to `orders` (status `pending`) → staff **Deliver** it on the web `/orders` page (can deliver less than ordered) → only then is stock decremented and a `Sale` (channel `field`, `customer_id`) created, so reports count it on the delivery date. Order lines are priced at `items.wholesale_price ?? selling_price` at order time. Offline idempotency: the device generates `client_uuid` for orders and stores; `POST /api/orders/batch` returns the existing row on replay.
+Agent takes an order in the app (works offline) → it syncs to `orders` (status `pending`) → staff **Deliver** it on the web `/orders` page (can deliver less than ordered) → only then is stock decremented and a `Sale` (channel `field`, `customer_id`) created, so reports count it on the delivery date. Order lines are priced with pack pricing at order time (snapshot kept for deliveries). Offline idempotency: the device generates `client_uuid` for orders and stores; `POST /api/orders/batch` returns the existing row on replay.
 
 ## Android app (`android/`)
 Kotlin + Jetpack Compose, same toolchain/patterns as `/var/www/recit/android`. `:core` (no Compose: ApiClient + token refresh, DTOs, Money, EscPos, ReceiptFormatter) and `:app` (Compose UI, Room offline cache/outbox, WorkManager `SyncWorker` → `SyncEngine`, Bluetooth printing, PDF share). UI depends only on `app/.../data/Repositories.kt` interfaces; `ui/preview/Fakes.kt` implements them for tests/previews.
@@ -59,12 +60,12 @@ cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-
 ```
 - No emulator on this box: only JVM/Robolectric tests. `LiveServerTest` hits the live server (skips if unreachable) and **creates a real order + store** — reseed afterwards.
 - Debug build → `http://marbingo.62-84-181-147.sslip.io/` (cleartext allowed for that host only, `src/debug/res/xml/network_security_config.xml`). Release (`API_BASE_URL` = `https://CHANGE-ME/`) needs the real HTTPS domain and a keystore kept **outside the repo** (`/root/keystores/`).
-- Room is at version 1 with no destructive migration — any entity change needs a real `Migration` (agents may have queued orders on-device).
+- Never use destructive Room migrations — any entity change needs a real `Migration` (agents may have queued orders on-device).
 - Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each published build; installing over the old APK keeps queued orders.
 - APKs: `downloads/` served by nginx at `/downloads/` (MIME `application/vnd.android.package-archive`); APKs + `index.html` are gitignored.
 
 - Build types: `debug` (43 MB) and `staging` (R8-minified, debug-signed, same applicationId `ph.marbingo.field.debug` so it upgrades the debug app, ~25 MB — publish this one as `marbingo-field-v<VER>.apk`; smaller APKs pass Play Protect's scan faster). `./gradlew :app:assembleStaging`.
-- Room is at **version 2** (`MIGRATION_1_2`: customer lat/lng + `location_points` + `tracking_meta`), covered by `MigrationTest`.
+- Room is at **version 3** (`MIGRATION_1_2`: customer lat/lng + `location_points` + `tracking_meta`; `MIGRATION_2_3`: `item_packs`, line breakdowns, items rebuilt without wholesale price, forces one full re-pull), covered by `MigrationTest`.
 - Location tracking lives in `app/.../tracking/`: `LocationTrackingService` (foreground, type `location`), `TrackingScheduler` (exact alarms at work-hour boundaries + every 15 min on duty to revive a killed service; boot/package-replaced/time-change receivers), `LocationUploader` (outbox → `POST /api/tracking/points`), onboarding UI in `ui/tracking/`. Needs Google Play services (fused location).
 
 ## Ecosystem Map (tracking)
@@ -81,4 +82,4 @@ Sign in online → airplane mode → add a store + take an order (scan a barcode
 Temporary test host: `marbingo.62-84-181-147.sslip.io` (nginx site enabled, HTTP only). For production: put the real domain in `/etc/nginx/sites-available/marbingo`, reload, `certbot --nginx -d DOMAIN`, and update the Android release `API_BASE_URL`.
 
 ## Not built yet (HANDOFF §9)
-Inventory list / edit-item screen (API `PUT /api/items/:id` + restock exist), stock-history view.
+Stock-history view; restock/adjustment UI on the web (API `POST /api/items/:id/restock` exists). Inventory list (`/items`) and Edit item now exist.

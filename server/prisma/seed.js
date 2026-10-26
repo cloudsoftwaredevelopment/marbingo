@@ -4,6 +4,7 @@ const prisma = require('../src/db');
 const { routeBetween } = require('../src/lib/osrm');
 const { manilaParts, haversine } = require('../src/lib/tracking');
 const { recomputeDay } = require('../src/routes/tracking');
+const { priceQty } = require('../src/lib/pricing');
 
 const DAYS = 120;
 const MANILA_MS = 8 * 3600 * 1000;
@@ -27,8 +28,17 @@ const ITEMS = [
   ['Mung beans, 500 g', 'Rice & grains', 'pack', 60, 18, 160]
 ];
 
-// Items (by index) with no wholesale price, to exercise the sellingPrice fallback.
-const NO_WHOLESALE = new Set([4, 8, 11]);
+const PACK_TYPES = [['Dozen', 12], ['Box', null], ['Crate', null], ['Case', null], ['Sack', null]];
+
+// Item index → [pack type, size in base units, discount vs retail per unit]. Mung beans (11) has none.
+const PACKS = {
+  0: [['Sack', 50, 0.07]], 1: [['Sack', 50, 0.06]], 2: [['Case', 12, 0.06]], 3: [['Case', 100, 0.09]],
+  4: [['Box', 72, 0.08], ['Dozen', 12, 0.04]], 5: [['Case', 24, 0.07]], 6: [['Sack', 25, 0.1]],
+  7: [['Case', 48, 0.05]], 8: [['Case', 48, 0.06]], 9: [['Case', 12, 0.05]], 10: [['Sack', 25, 0.08]]
+};
+
+// Breakdown parts for a pack-priced line; counts lines that actually bought at least one pack.
+const hasPack = (parts) => parts.some((p) => p.name);
 
 const STORES = [
   ['Aling Nena Store', 'Nena Bautista', '0917 301 4482', 'Brgy. Bantayan, Dumaguete City'],
@@ -157,7 +167,7 @@ async function seedTracks(agent, customers, now, todayUtc) {
 
 async function main() {
   const now = new Date();
-  await prisma.$executeRawUnsafe('TRUNCATE track_cache, agent_stops, location_points, order_lines, orders, customers, sale_lines, sales, stock_moves, items, categories, users, settings RESTART IDENTITY CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE track_cache, agent_stops, location_points, order_lines, orders, customers, sale_lines, sales, stock_moves, item_packs, pack_types, items, categories, users, settings RESTART IDENTITY CASCADE');
 
   await prisma.setting.createMany({ data: [{ key: 'shop_name', value: 'Marbingo' }, { key: 'shop_mark', value: 'MB' }] });
 
@@ -172,6 +182,12 @@ async function main() {
         createdAt: role === 'MANAGER' ? new Date('2024-03-04T00:00:00+08:00') : undefined
       }
     });
+  }
+
+  const packTypeIds = {};
+  for (let i = 0; i < PACK_TYPES.length; i++) {
+    const [name, defaultSize] = PACK_TYPES[i];
+    packTypeIds[name] = (await prisma.packType.create({ data: { name, defaultSize, sort: i + 1 } })).id;
   }
 
   const cats = {};
@@ -192,12 +208,17 @@ async function main() {
         reorderLevel: base * 2,
         costPrice: Math.round(price100 * 0.8),
         sellingPrice: price100,
-        wholesalePrice: NO_WHOLESALE.has(i) ? null : Math.round(price100 * 0.9),
         createdById: users.INVENTORY.id,
         createdAt: histStart
       }
     });
-    items.push({ id: row.id, base, price: price100, wholesale: row.wholesalePrice, reorder: base * 2, qty: stock });
+    const packs = [];
+    for (const [type, size, disc] of PACKS[i] || []) {
+      const packPrice = Math.round(size * price * (1 - disc)) * 100;
+      await prisma.itemPack.create({ data: { itemId: row.id, packTypeId: packTypeIds[type], size, price: packPrice } });
+      packs.push({ packTypeId: packTypeIds[type], name: type, size, price: packPrice });
+    }
+    items.push({ id: row.id, base, price: price100, packs, reorder: base * 2, qty: stock });
   }
 
   const moves = items.map((it) => ({ itemId: it.id, change: it.qty, reason: 'initial', at: histStart, byId: users.INVENTORY.id }));
@@ -248,16 +269,23 @@ async function main() {
       for (let k = 0; k < nLines; k++) {
         const it = pick();
         if (chosen.has(it)) continue;
-        const qty = Math.min(it.qty, Math.max(1, Math.round(rand(0.4, 1.6) * meanQty)));
+        let qty = Math.max(1, Math.round(rand(0.4, 1.6) * meanQty));
+        // Some bigger buys that reach whole packs.
+        if (it.packs.length && Math.random() < 0.12) {
+          const big = it.packs[randInt(0, it.packs.length - 1)];
+          qty = big.size * randInt(1, 2) + randInt(0, 5);
+        }
+        qty = Math.min(it.qty, qty);
         if (qty > 0) { chosen.set(it, qty); it.qty -= qty; }
       }
       if (!chosen.size) continue;
       const id = ++saleId;
       let total = 0;
       for (const [it, qty] of chosen) {
-        const lineTotal = qty * it.price;
+        const priced = priceQty(qty, it.price, it.packs);
+        const lineTotal = priced.total;
         total += lineTotal;
-        lines.push({ id: ++lineId, saleId: id, itemId: it.id, qty, unitPrice: it.price, lineTotal });
+        lines.push({ id: ++lineId, saleId: id, itemId: it.id, qty, unitPrice: it.price, lineTotal, breakdown: priced.parts });
         moves.push({ itemId: it.id, change: -qty, reason: 'sale', at: soldAt, byId: cashier.id });
       }
       sales.push({ id, soldAt, cashierId: cashier.id, channel, total });
@@ -287,11 +315,15 @@ async function main() {
     const chosen = new Map();
     for (let k = randInt(1, 4); k > 0; k--) {
       const it = items[randInt(0, items.length - 1)];
-      chosen.set(it, (chosen.get(it) || 0) + randInt(5, 30));
+      const big = it.packs.length && Math.random() < 0.75 ? it.packs[randInt(0, it.packs.length - 1)] : null;
+      chosen.set(it, (chosen.get(it) || 0) + (big ? big.size * randInt(1, 3) + randInt(0, 10) : randInt(5, 30)));
     }
     const olines = [...chosen].map(([it, qty]) => {
-      const unitPrice = it.wholesale != null ? it.wholesale : it.price;
-      return { it, qty, unitPrice, lineTotal: qty * unitPrice, deliveredQty: null };
+      const priced = priceQty(qty, it.price, it.packs);
+      return {
+        it, qty, unitPrice: it.price, lineTotal: priced.total, deliveredQty: null, breakdown: priced.parts,
+        pricing: { retail: it.price, packs: it.packs }
+      };
     });
     const row = {
       status, customerId: customer.id, agentId: users.AGENT.id, orderedAt,
@@ -308,9 +340,10 @@ async function main() {
       // Delivered in full; the ledger repair below restocks beforehand wherever that would go negative.
       for (const l of olines) {
         l.deliveredQty = l.qty;
-        const lt = l.deliveredQty * l.unitPrice;
-        total += lt;
-        lines.push({ id: ++lineId, saleId: id, itemId: l.it.id, qty: l.deliveredQty, unitPrice: l.unitPrice, lineTotal: lt });
+        // Re-priced from the order's snapshot, as the deliver endpoint does.
+        const priced = priceQty(l.deliveredQty, l.pricing.retail, l.pricing.packs);
+        total += priced.total;
+        lines.push({ id: ++lineId, saleId: id, itemId: l.it.id, qty: l.deliveredQty, unitPrice: l.unitPrice, lineTotal: priced.total, breakdown: priced.parts });
         moves.push({ itemId: l.it.id, change: -l.deliveredQty, reason: 'sale', at: deliveredAt, byId: users.INVENTORY.id });
       }
       sales.push({ id, soldAt: deliveredAt, cashierId: users.AGENT.id, channel: 'field', customerId: customer.id, total });
@@ -356,7 +389,7 @@ async function main() {
     await prisma.order.create({
       data: {
         ...row,
-        lines: { create: olines.map((l) => ({ itemId: l.it.id, qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal, deliveredQty: l.deliveredQty })) }
+        lines: { create: olines.map((l) => ({ itemId: l.it.id, qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal, deliveredQty: l.deliveredQty, breakdown: l.breakdown, pricing: l.pricing })) }
       }
     });
   }
@@ -376,7 +409,9 @@ async function main() {
   console.log(`  categories: ${CATEGORIES.length}, items: ${items.length}`);
   console.log(`  sales: ${sales.length}, lines: ${lines.length}, stock moves: ${moves.length}`);
   const delivered = orderRows.filter((o) => o.status === 'delivered').length;
-  console.log(`  stores: ${customers.length}, wholesale prices: ${items.filter((i) => i.wholesale != null).length}/${items.length}`);
+  console.log(`  stores: ${customers.length}, items with packs: ${items.filter((i) => i.packs.length).length}/${items.length}`);
+  const olinesAll = orderRows.flatMap((o) => o.olines);
+  console.log(`  pack-priced lines: ${lines.filter((l) => hasPack(l.breakdown)).length}/${lines.length} sale lines, ${olinesAll.filter((l) => hasPack(l.breakdown)).length}/${olinesAll.length} order lines`);
   console.log(`  orders: ${orderRows.length} (${delivered} delivered, ${orderRows.filter((o) => o.status === 'pending').length} pending, ${orderRows.filter((o) => o.status === 'cancelled').length} cancelled)`);
   console.log(`  gross: P${(gross / 100).toLocaleString('en-PH')} over ${DAYS} days (avg P${Math.round(gross / 100 / DAYS).toLocaleString('en-PH')}/day)`);
   console.log(`  tracking: ${track.points} GPS points over ${track.days} days, ${track.stops} stops, ${customers.filter((c) => c.lat == null).length} store(s) without a location`);

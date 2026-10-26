@@ -23,6 +23,7 @@ const Icon = ({ children }) => (
 
 const NAV = [
   { to: '/', label: 'Sales report', cap: 'reports', end: true, icon: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></> },
+  { to: '/items', label: 'Items', cap: 'items', end: true, icon: <><path d="M8 6h12" /><path d="M8 12h12" /><path d="M8 18h12" /><path d="M4 6h.01" /><path d="M4 12h.01" /><path d="M4 18h.01" /></> },
   { to: '/items/new', label: 'Add item', cap: 'items', icon: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></> },
   { to: '/pos', label: 'Record sale', cap: 'pos', icon: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6" /><path d="M9 12h6" /></> },
   { to: '/orders', label: 'Orders', agentLabel: 'My orders', cap: 'orders', badge: true, icon: <><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z" /><path d="M8 6H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-2" /><path d="M9 12h6" /><path d="M9 16h4" /></> },

@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import ph.marbingo.core.pricing.Pricing
+import ph.marbingo.core.pricing.Upsell
 import ph.marbingo.field.data.*
 import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.stores.AddStoreDialog
@@ -89,7 +91,7 @@ fun NewOrderScreen(vm: NewOrderViewModel, nav: NavController, entry: NavBackStac
                     onQuery = vm::setItemQuery,
                     onAdd = vm::addItem,
                     onScan = { nav.navigate(Routes.SCAN) },
-                    onQty = vm::setQty, onInc = vm::increment, onDec = vm::decrement, onRemove = vm::remove,
+                    onQty = vm::setQty, onUpsell = vm::applyUpsell, onInc = vm::increment, onDec = vm::decrement, onRemove = vm::remove,
                     onNotes = vm::setNotes,
                     onChangeStore = { vm.goTo(OrderStep.STORE) },
                 )
@@ -168,7 +170,7 @@ private fun StoreStep(
 private fun ItemsStep(
     s: NewOrderState, query: String, results: List<Item>, wide: Boolean,
     onQuery: (String) -> Unit, onAdd: (Item) -> Unit, onScan: () -> Unit,
-    onQty: (Int, Int) -> Unit, onInc: (Int) -> Unit, onDec: (Int) -> Unit, onRemove: (Int) -> Unit,
+    onQty: (Int, Int) -> Unit, onUpsell: (Int) -> Unit, onInc: (Int) -> Unit, onDec: (Int) -> Unit, onRemove: (Int) -> Unit,
     onNotes: (String) -> Unit, onChangeStore: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -176,7 +178,7 @@ private fun ItemsStep(
         SearchPane(m, s, query, results, onQuery, onAdd, onScan)
     }
     val cartPane: @Composable (Modifier) -> Unit = { m ->
-        CartPane(m, s, onQty, onInc, onDec, onRemove, onNotes)
+        CartPane(m, s, onQty, onUpsell, onInc, onDec, onRemove, onNotes)
     }
     if (wide) {
         Row(Modifier.fillMaxSize()) {
@@ -223,6 +225,7 @@ private fun SearchPane(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ItemRow(item: Item, inCart: Int, onClick: () -> Unit) {
     Surface(
@@ -237,9 +240,14 @@ private fun ItemRow(item: Item, inCart: Int, onClick: () -> Unit) {
                 Text(item.name, style = MaterialTheme.typography.titleMedium)
                 val sub = listOfNotNull(item.category, item.sku).joinToString(" · ")
                 if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                if (item.packs.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        item.packs.forEach { Chip(Fmt.packLabel(it, item.unit), Tone.Neutral) }
+                    }
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.money(item.fieldPrice), style = MbType.mono.copy(fontSize = 16.sp))
+                Text(Fmt.retail(item), style = MbType.mono.copy(fontSize = 16.sp))
                 Text("≈ ${item.qtyOnHand} on hand", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
             }
             Spacer(Modifier.width(10.dp))
@@ -251,7 +259,7 @@ private fun ItemRow(item: Item, inCart: Int, onClick: () -> Unit) {
 @Composable
 private fun CartPane(
     modifier: Modifier, s: NewOrderState,
-    onQty: (Int, Int) -> Unit, onInc: (Int) -> Unit, onDec: (Int) -> Unit, onRemove: (Int) -> Unit,
+    onQty: (Int, Int) -> Unit, onUpsell: (Int) -> Unit, onInc: (Int) -> Unit, onDec: (Int) -> Unit, onRemove: (Int) -> Unit,
     onNotes: (String) -> Unit,
 ) {
     LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -262,7 +270,11 @@ private fun CartPane(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(line.item.name, style = MaterialTheme.typography.titleMedium)
-                        Text("${Fmt.money(line.item.fieldPrice)} / ${line.item.unit}", style = MbType.monoSmall, color = Mb.Muted)
+                        Text(Fmt.retail(line.item), style = MbType.monoSmall, color = Mb.Muted)
+                        Text(
+                            Fmt.breakdown(line.priced.parts, line.item.unit), style = MbType.monoSmall,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
                     }
                     IconButton(onClick = { onRemove(line.item.id) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Filled.DeleteOutline, contentDescription = "Remove ${line.item.name}", tint = Mb.Danger)
@@ -271,8 +283,9 @@ private fun CartPane(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     QtyStepper(line.qty, line.item.name, { onQty(line.item.id, it) }, { onDec(line.item.id) }, { onInc(line.item.id) })
                     Spacer(Modifier.weight(1f))
-                    Text(Fmt.money(line.item.fieldPrice * line.qty), style = MbType.mono.copy(fontSize = 16.sp))
+                    Text(Fmt.money(line.total), style = MbType.mono.copy(fontSize = 16.sp))
                 }
+                line.upsell?.let { up -> UpsellHint(line, up) { onUpsell(line.item.id) } }
             }
         }
         item {
@@ -280,6 +293,28 @@ private fun CartPane(
                 s.notes, onNotes, "Notes (optional)", singleLine = false, minLines = 2,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+    }
+}
+
+/** "Add 1 kg → pay ₱138.00 less" with the pack it unlocks. */
+@Composable
+private fun UpsellHint(line: CartLine, up: Upsell, onApply: () -> Unit) {
+    val unit = line.item.unit
+    val pack = Pricing.priceQty(line.qty + up.addQty, line.item.sellingPrice, line.item.packDefs).parts.firstOrNull { it.name != null }
+    val what = pack?.let { "${it.count} × ${it.name}" }
+    val text = if (up.saving > 0) "Add ${up.addQty} $unit → pay ${Fmt.money(up.saving)} less" else "Add ${up.addQty} $unit at no extra cost"
+    Surface(
+        onClick = onApply, shape = MbShapes.Control, color = Mb.Ground, border = BorderStroke(1.dp, Mb.Accent),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = Mb.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(text, style = MaterialTheme.typography.titleSmall, color = Mb.Accent)
+                if (what != null) Text("Makes $what, ${Fmt.money(up.total)} in all", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+            }
         }
     }
 }
@@ -346,9 +381,10 @@ private fun ReviewStep(s: NewOrderState, onEditItems: () -> Unit) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Text(l.item.name, style = MaterialTheme.typography.titleSmall)
-                            Text("${l.qty} × ${Fmt.money(l.item.fieldPrice)}", style = MbType.monoSmall, color = Mb.Muted)
+                            Text("${l.qty} ${l.item.unit}", style = MbType.monoSmall, color = Mb.Muted)
+                            Text(Fmt.breakdown(l.priced.parts, l.item.unit), style = MbType.monoSmall, color = Mb.Muted)
                         }
-                        Text(Fmt.money(l.item.fieldPrice * l.qty), style = MbType.mono)
+                        Text(Fmt.money(l.total), style = MbType.mono)
                     }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Mb.Line)

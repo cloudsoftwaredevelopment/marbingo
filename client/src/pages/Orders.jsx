@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import api, { apiError } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../lib/roles';
-import { num, peso, deliveredTotal, orderTotal } from '../lib/format';
+import { num, peso, deliveredTotal, deliveredLineTotal, orderTotal, partsWithMoney } from '../lib/format';
+import { priceQty } from '../lib/pricing';
 import '../styles/forms.css';
 import '../styles/orders.css';
 
@@ -39,6 +40,20 @@ function useModal(onClose) {
   return ref;
 }
 
+// Re-prices `qty` of an order line the way the server will on delivery: from the line's pricing
+// snapshot { retail, packs }. The order JSON may not include the snapshot, so when line.pricing is
+// absent we rebuild it from the line's breakdown (its pack parts give size/price) with unitPrice as retail.
+// Limitation of the fallback: a pack that wasn't used at the ordered qty isn't known, so the dialog
+// total is an estimate; the server's figure (shown after delivery) is authoritative.
+function repriceLine(l, qty) {
+  const snap = l.pricing;
+  if (snap && Number.isInteger(snap.retail)) return priceQty(qty, snap.retail, snap.packs || []);
+  const seen = new Map();
+  (l.breakdown || []).filter((x) => x.name).forEach((x) => seen.set(`${x.size}:${x.price}`, { packTypeId: x.packTypeId, name: x.name, size: x.size, price: x.price }));
+  return priceQty(qty, l.unitPrice, [...seen.values()]);
+}
+const hasPacks = (parts) => Array.isArray(parts) && parts.some((x) => x.name);
+
 function DeliverDialog({ order, onClose, onDone }) {
   const ref = useModal(onClose);
   const [qty, setQty] = useState(() => Object.fromEntries(order.lines.map((l) => [l.itemId, String(l.qty)])));
@@ -48,7 +63,8 @@ function DeliverDialog({ order, onClose, onDone }) {
     const n = Math.floor(Number(qty[l.itemId]));
     return Number.isFinite(n) ? Math.min(l.qty, Math.max(0, n)) : l.qty;
   };
-  const total = order.lines.reduce((a, l) => a + val(l) * l.unitPrice, 0);
+  const priced = order.lines.map((l) => repriceLine(l, val(l)));
+  const total = priced.reduce((a, r) => a + r.total, 0);
   const none = order.lines.every((l) => val(l) === 0);
 
   async function confirm() {
@@ -71,7 +87,8 @@ function DeliverDialog({ order, onClose, onDone }) {
           {order.lines.map((l, i) => (
             <div className="line" key={l.itemId}>
               <span className="nm" id={`dl-n-${l.itemId}`}>{l.name}</span>
-              <span className="meta">Ordered {num(l.qty)} · {peso(l.unitPrice)} each</span>
+              <span className="meta">Ordered {num(l.qty)} · {peso(l.unitPrice)} each loose</span>
+              {(hasPacks(priced[i].parts) || hasPacks(l.breakdown)) && <span className="meta" aria-live="polite">Delivering: {partsWithMoney(priced[i].parts, l.unit) || 'nothing'} · {peso(priced[i].total)}</span>}
               <span className="stepper">
                 <input type="number" min="0" max={l.qty} step="1" inputMode="numeric" className="input mono" aria-labelledby={`dl-n-${l.itemId}`}
                   data-autofocus={i === 0 ? '' : undefined} value={qty[l.itemId]}
@@ -145,18 +162,23 @@ function Slip({ order, shop }) {
       {c.phone && <div>{c.phone}</div>}
       <hr />
       {order.lines.map((l) => {
-        const q = order.status === 'delivered' && l.deliveredQty != null ? l.deliveredQty : l.qty;
+        const delivered = order.status === 'delivered' && l.deliveredQty != null;
+        const q = delivered ? l.deliveredQty : l.qty;
+        const parts = delivered ? l.deliveredBreakdown : l.breakdown;
         return (
           <div className="ln" key={l.itemId}>
             <div>{l.name}</div>
-            <div className="r"><span>{num(q)} × {peso(l.unitPrice)}</span><span>{peso(q * l.unitPrice)}</span></div>
+            {Array.isArray(parts) && parts.length > 0 ? parts.map((x, k) => (
+              <div className="r" key={k}>
+                <span>{x.name ? `${x.count} × ${x.name} (${x.size}${l.unit ? ' ' + l.unit : ''})` : `${x.count}${l.unit ? ' ' + l.unit : ''} × ${peso(x.price)}`}</span>
+                <span>{peso(x.amount)}</span>
+              </div>
+            )) : <div className="r"><span>{num(q)} × {peso(l.unitPrice)}</span><span>{peso(q * l.unitPrice)}</span></div>}
           </div>
         );
       })}
       <hr />
-      <div className="tot"><span>TOTAL</span><span>{peso(order.status === 'delivered'
-        ? order.lines.reduce((a, l) => a + (l.deliveredQty ?? l.qty) * l.unitPrice, 0)
-        : order.total)}</span></div>
+      <div className="tot"><span>TOTAL</span><span>{peso(orderTotal(order))}</span></div>
       <div className="sig">Received by: ____________</div>
     </div>,
     document.body
@@ -324,18 +346,22 @@ export default function Orders() {
                               <div className="table-wrap">
                                 <table className="tbl" style={{ minWidth: 420 }}>
                                   <thead><tr>
-                                    <th scope="col">Item</th><th scope="col" className="num">Qty</th><th scope="col" className="num">Unit price</th>
+                                    <th scope="col">Item</th><th scope="col" className="num">Qty</th><th scope="col" className="num">Retail price</th>
                                     {o.status === 'delivered' && <th scope="col" className="num">Delivered</th>}
                                     <th scope="col" className="num">Line total</th>
                                   </tr></thead>
                                   <tbody>
                                     {o.lines.map((l) => (
                                       <tr key={l.itemId}>
-                                        <td>{l.name}</td>
+                                        <td>
+                                          {l.name}
+                                          {hasPacks(l.breakdown) && <span className="sub-note">Ordered: {partsWithMoney(l.breakdown, l.unit)}</span>}
+                                          {o.status === 'delivered' && hasPacks(l.deliveredBreakdown) && <span className="sub-note">Delivered: {partsWithMoney(l.deliveredBreakdown, l.unit)}</span>}
+                                        </td>
                                         <td className="num">{num(l.qty)}</td>
                                         <td className="num">{peso(l.unitPrice)}</td>
                                         {o.status === 'delivered' && <td className="num">{num(l.deliveredQty ?? l.qty)}</td>}
-                                        <td className="num">{peso(o.status === 'delivered' ? (l.deliveredQty ?? l.qty) * l.unitPrice : l.lineTotal)}</td>
+                                        <td className="num">{peso(o.status === 'delivered' ? deliveredLineTotal(l) : l.lineTotal)}</td>
                                       </tr>
                                     ))}
                                   </tbody>

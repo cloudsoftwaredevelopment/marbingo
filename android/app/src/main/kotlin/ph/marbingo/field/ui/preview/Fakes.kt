@@ -12,10 +12,10 @@ import java.util.UUID
 object Sample {
     val session = Session(1, "Ramon Dela Cruz", "AGENT", "Dela Cruz Dry Goods", "DG")
     val items = listOf(
-        Item(1, "Rice 5kg", "4800001", "bag", "Grains", 25000, 27000, 40, null),
-        Item(2, "Cooking oil 1L", "4800002", "btl", "Pantry", 9500, 10500, 12, null),
-        Item(3, "Sugar 1kg", "4800003", "pack", "Pantry", 6800, 7500, 0, null),
-        Item(4, "Instant noodles", null, "pc", "Snacks", 1100, 1300, 200, null),
+        Item(1, "Jasmine rice", "4800001", "kg", "Grains", 6200, 400, null, listOf(Pack(5, "Sack", 50, 290000))),
+        Item(2, "Cooking oil 1L", "4800002", "btl", "Pantry", 10500, 12, null),
+        Item(3, "Sugar 1kg", "4800003", "pack", "Pantry", 7500, 0, null),
+        Item(4, "Instant noodles", null, "pc", "Snacks", 1300, 200, null, listOf(Pack(2, "Box", 24, 28000))),
     )
     val store = Store("store-1", 1, "Aling Nena Sari-Sari", "Nena Santos", "09171234567", "12 Mabini St", null, false)
 }
@@ -70,7 +70,7 @@ class FakeOrders(private val stores: FakeStores = FakeStores()) : OrderRepositor
     override fun observe(clientUuid: String) = all.map { l -> l.firstOrNull { it.clientUuid == clientUuid } }
     override suspend fun place(storeClientUuid: String, lines: List<CartLine>, notes: String?): String {
         val id = UUID.randomUUID().toString()
-        val ls = lines.map { OrderLine(it.item.id, it.item.name, it.item.unit, it.qty, it.item.fieldPrice, it.item.fieldPrice * it.qty, null) }
+        val ls = lines.map { OrderLine(it.item.id, it.item.name, it.item.unit, it.qty, it.item.sellingPrice, it.total, null, it.priced.parts) }
         val storeName = stores.all.value.firstOrNull { it.clientUuid == storeClientUuid }?.name ?: "?"
         all.value = listOf(
             Order(id, null, storeClientUuid, storeName, Sample.session.name, System.currentTimeMillis(), OrderStatus.PENDING,

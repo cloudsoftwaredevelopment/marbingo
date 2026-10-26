@@ -3,11 +3,12 @@ const prisma = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap, toCentavos, idParam } = require('../lib/http');
 const { imageUpload, saveImage } = require('../lib/upload');
+const { packInclude, shapeItem, validatePacks } = require('../lib/packs');
 
 const UNITS = ['pc', 'pack', 'kg', 'sack', 'box', 'bottle', 'can'];
 router.param('id', idParam('Item not found.'));
 
-const include = { category: { select: { id: true, name: true } } };
+const include = { category: { select: { id: true, name: true } }, ...packInclude };
 const isInt = (v) => /^\d+$/.test(String(v).trim());
 const has = (b, k) => b[k] !== undefined;
 
@@ -42,11 +43,6 @@ function parse(b, partial) {
     if (Number.isNaN(c)) fields.cost = 'Enter a valid cost price.';
     else data.costPrice = c;
   }
-  if (has(b, 'wholesale')) {
-    const w = toCentavos(b.wholesale);
-    if (Number.isNaN(w)) fields.wholesale = 'Enter a valid wholesale price.';
-    else data.wholesalePrice = w;
-  }
   if (has(b, 'unit') && String(b.unit).trim() !== '') {
     if (!UNITS.includes(b.unit)) fields.unit = 'Choose a unit.';
     else data.unit = b.unit;
@@ -60,6 +56,28 @@ function parse(b, partial) {
   }
   return { fields, data };
 }
+
+// Parses and validates b.packs (JSON string or array). Returns { error, fields } | { packs, warnings } | {} when absent.
+async function parsePacks(b, retail, itemId) {
+  if (b.packs === undefined) return {};
+  let raw = b.packs;
+  if (typeof raw === 'string') {
+    try { raw = raw.trim() === '' ? [] : JSON.parse(raw); } catch (e) { raw = null; }
+  }
+  if (!Array.isArray(raw)) {
+    const m = 'Packs could not be read.';
+    return { error: 'Check the highlighted fields.', fields: { packs: m, packErrors: [{ index: -1, message: m }] } };
+  }
+  const types = new Map((await prisma.packType.findMany()).map((t) => [t.id, t]));
+  const kept = itemId ? await prisma.itemPack.findMany({ where: { itemId }, select: { packTypeId: true } }) : [];
+  const v = validatePacks(raw, types, retail, new Set(kept.map((k) => k.packTypeId)));
+  if (v.errors.length) {
+    return { error: 'Check the highlighted fields.', fields: { packs: 'Fix the pack prices.', packErrors: v.errors } };
+  }
+  return { packs: v.packs, warnings: v.warnings };
+}
+
+const sendItem = (res, status, item, warnings) => res.status(status).json({ item: shapeItem(item), ...(warnings && warnings.length ? { warnings } : {}) });
 
 const savePhoto = (file) => saveImage(file.buffer, 'items', `${Date.now()}-${Math.round(Math.random() * 1e6)}.webp`,
   { width: 800, height: 800, fit: 'inside', withoutEnlargement: true });
@@ -77,13 +95,19 @@ router.get('/', authenticate, wrap(async (req, res) => {
   const where = q
     ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }] }
     : {};
-  res.json(await prisma.item.findMany({ where, include, orderBy: { name: 'asc' }, take: 50 }));
+  res.json((await prisma.item.findMany({ where, include, orderBy: { name: 'asc' }, take: where.OR ? 50 : 2000 })).map(shapeItem));
 }));
 
 router.get('/by-sku/:sku', authenticate, wrap(async (req, res) => {
   const item = await prisma.item.findUnique({ where: { sku: req.params.sku.trim() }, include });
   if (!item) return fail(res, 404, 'No item has that SKU.');
-  res.json(item);
+  res.json(shapeItem(item));
+}));
+
+router.get('/:id', authenticate, wrap(async (req, res) => {
+  const item = await prisma.item.findUnique({ where: { id: req.id }, include });
+  if (!item) return fail(res, 404, 'Item not found.');
+  res.json({ item: shapeItem(item) });
 }));
 
 const editors = [authenticate, requireRole('MANAGER', 'INVENTORY')];
@@ -91,6 +115,8 @@ const editors = [authenticate, requireRole('MANAGER', 'INVENTORY')];
 router.post('/', ...editors, imageUpload.single('photo'), wrap(async (req, res) => {
   const { fields, data } = parse(req.body, false);
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
+  const pk = await parsePacks(req.body, data.sellingPrice);
+  if (pk.error) return fail(res, 400, pk.error, pk.fields);
   if (data.sku && (await skuConflict(res, data.sku))) return;
 
   const { qty, ...rest } = data;
@@ -100,22 +126,34 @@ router.post('/', ...editors, imageUpload.single('photo'), wrap(async (req, res) 
       data: { ...rest, qtyOnHand: qty, imageUrl, createdById: req.user.id }
     });
     if (qty > 0) await tx.stockMove.create({ data: { itemId: created.id, change: qty, reason: 'initial', byId: req.user.id } });
+    if (pk.packs && pk.packs.length) await tx.itemPack.createMany({ data: pk.packs.map((p) => ({ ...p, itemId: created.id })) });
     return tx.item.findUnique({ where: { id: created.id }, include });
   });
-  res.status(201).json({ item });
+  sendItem(res, 201, item, pk.warnings);
 }));
 
 router.put('/:id', ...editors, imageUpload.single('photo'), wrap(async (req, res) => {
   const id = req.id;
-  if (!(await prisma.item.findUnique({ where: { id } }))) return fail(res, 404, 'Item not found.');
+  const existing = await prisma.item.findUnique({ where: { id } });
+  if (!existing) return fail(res, 404, 'Item not found.');
   const { fields, data } = parse(req.body, true);
   if (Object.keys(fields).length) return fail(res, 400, 'Check the highlighted fields.', fields);
+  const pk = await parsePacks(req.body, data.sellingPrice !== undefined ? data.sellingPrice : existing.sellingPrice, id);
+  if (pk.error) return fail(res, 400, pk.error, pk.fields);
   if (data.sku && (await skuConflict(res, data.sku, id))) return;
 
   delete data.qty;
   if (req.file) data.imageUrl = await savePhoto(req.file);
-  const item = await prisma.item.update({ where: { id }, data, include });
-  res.json({ item });
+  const item = await prisma.$transaction(async (tx) => {
+    // Bump updatedAt explicitly: a packs-only change must still reach tablets doing incremental sync pulls.
+    await tx.item.update({ where: { id }, data: pk.packs ? { ...data, updatedAt: new Date() } : data });
+    if (pk.packs) {
+      await tx.itemPack.deleteMany({ where: { itemId: id } });
+      if (pk.packs.length) await tx.itemPack.createMany({ data: pk.packs.map((p) => ({ ...p, itemId: id })) });
+    }
+    return tx.item.findUnique({ where: { id }, include });
+  });
+  sendItem(res, 200, item, pk.warnings);
 }));
 
 router.post('/:id/restock', ...editors, wrap(async (req, res) => {
@@ -135,7 +173,7 @@ router.post('/:id/restock', ...editors, wrap(async (req, res) => {
   });
   if (item.status === 404) return fail(res, 404, 'Item not found.');
   if (item.status === 400) return fail(res, 400, 'Stock cannot go below 0.', { qty: 'Stock cannot go below 0.' });
-  res.json({ item: item.item });
+  res.json({ item: shapeItem(item.item) });
 }));
 
 module.exports = router;

@@ -17,6 +17,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/items', require('./routes/items'));
+app.use('/api/pack-types', require('./routes/pack-types'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/customers', require('./routes/customers'));

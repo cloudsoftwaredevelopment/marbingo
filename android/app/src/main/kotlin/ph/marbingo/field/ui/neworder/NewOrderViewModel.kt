@@ -26,7 +26,7 @@ data class NewOrderState(
     val error: String? = null,
     val savedUuid: String? = null,
 ) {
-    val total: Long get() = cart.sumOf { it.item.fieldPrice * it.qty }
+    val total: Long get() = cart.sumOf { it.total }
     /** Units across all lines. */
     val count: Int get() = cart.sumOf { it.qty }
     val dirty: Boolean get() = cart.isNotEmpty()
@@ -91,6 +91,13 @@ class NewOrderViewModel(private val deps: UiDeps) : ViewModel() {
 
     fun setQty(itemId: Int, qty: Int) = _state.update { s ->
         s.copy(cart = s.cart.map { if (it.item.id == itemId) it.copy(qty = clampQty(qty)) else it })
+    }
+
+    /** Applies the cart line's "add N more and pay less" hint. */
+    fun applyUpsell(itemId: Int) {
+        val line = _state.value.cart.firstOrNull { it.item.id == itemId } ?: return
+        val up = line.upsell ?: return
+        setQty(itemId, line.qty + up.addQty)
     }
 
     fun increment(itemId: Int) = _state.value.cart.firstOrNull { it.item.id == itemId }?.let { setQty(itemId, it.qty + 1) }

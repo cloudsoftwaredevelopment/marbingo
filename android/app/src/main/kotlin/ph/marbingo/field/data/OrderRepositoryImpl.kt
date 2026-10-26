@@ -7,6 +7,8 @@ import ph.marbingo.core.model.CancelRequest
 import ph.marbingo.core.net.ApiErrors
 import ph.marbingo.core.net.MarbingoApi
 import ph.marbingo.core.net.TokenStore
+import ph.marbingo.core.pricing.PartsJson
+import ph.marbingo.core.pricing.Pricing
 import ph.marbingo.field.data.db.AppDatabase
 import ph.marbingo.field.data.db.OrderEntity
 import ph.marbingo.field.data.db.OrderLineEntity
@@ -35,14 +37,15 @@ class OrderRepositoryImpl(
         val uuid = UUID.randomUUID().toString()
         val t = now()
         val user = tokens.user
-        // Merge duplicate items and price from the cache (the server re-prices at fieldPrice anyway).
-        val merged = lines.groupBy { it.item.id }.map { (id, group) ->
+        // Merge duplicate items and price from the cache with the cheapest pack mix. The server re-prices on
+        // sync (from its own prices) and the synced order replaces this local copy.
+        val rows = lines.groupBy { it.item.id }.map { (id, group) ->
             val item = db.items().byId(id)?.toModel() ?: group.first().item
-            Triple(item, group.sumOf { it.qty }, item.fieldPrice)
-        }
-        val rows = merged.map { (item, qty, price) ->
+            val qty = group.sumOf { it.qty }
+            val priced = Pricing.priceQty(qty, item.sellingPrice, item.packDefs)
             OrderLineEntity(orderClientUuid = uuid, itemId = item.id, name = item.name, unit = item.unit,
-                qty = qty, unitPrice = price, lineTotal = price * qty, deliveredQty = null)
+                qty = qty, unitPrice = item.sellingPrice, lineTotal = priced.total, deliveredQty = null,
+                breakdown = PartsJson.encode(priced.parts))
         }
         val order = OrderEntity(
             clientUuid = uuid, serverId = null, customerClientUuid = store.clientUuid, storeName = store.name,

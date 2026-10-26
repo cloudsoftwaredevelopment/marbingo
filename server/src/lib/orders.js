@@ -1,9 +1,13 @@
 // Pure helpers for field orders (no DB), plus the shared order shape.
-const fieldPrice = (item) => (item.wholesalePrice != null ? item.wholesalePrice : item.sellingPrice);
+const { priceItem, repriceLine } = require('./packs');
 
+// Order line columns for `qty` of an item (with packs loaded): retail unit price, priced total, breakdown, snapshot.
 const priceLine = (item, qty) => {
-  const unitPrice = fieldPrice(item);
-  return { itemId: item.id, qty, unitPrice, lineTotal: unitPrice * qty };
+  const r = priceItem(item, qty);
+  return {
+    itemId: item.id, qty, unitPrice: r.retail, lineTotal: r.total, breakdown: r.parts,
+    pricing: { retail: r.retail, packs: r.packs },
+  };
 };
 
 const MAX_QTY = 100000;
@@ -76,6 +80,9 @@ const shapeOrder = (o) => ({
   lines: o.lines.map((l) => ({
     itemId: l.itemId, name: l.item.name, unit: l.item.unit,
     qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal, deliveredQty: l.deliveredQty,
+    breakdown: l.breakdown || repriceLine(l, l.qty).parts,
+    deliveredBreakdown: l.deliveredQty == null ? null : repriceLine(l, l.deliveredQty).parts,
+    pricing: l.pricing || null, // snapshot {retail, packs} — lets the web deliver dialog re-price exactly
   })),
 });
 
@@ -113,4 +120,4 @@ function parseLocation(b, user) {
   };
 }
 
-module.exports = { parseLocation, fieldPrice, priceLine, mergeLines, deliveryQuantities, parseDate, orderInclude, shapeOrder, shapeCustomer };
+module.exports = { parseLocation, priceLine, mergeLines, deliveryQuantities, parseDate, orderInclude, shapeOrder, shapeCustomer };

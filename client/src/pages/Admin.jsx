@@ -5,7 +5,7 @@ import { ROLE_LABELS } from '../lib/format';
 import '../styles/forms.css';
 
 const ROLES = ['MANAGER', 'INVENTORY', 'CASHIER', 'AGENT'];
-const TABS = [['users', 'Users'], ['categories', 'Categories'], ['shop', 'Shop'], ['tracking', 'Tracking']];
+const TABS = [['users', 'Users'], ['categories', 'Categories'], ['packs', 'Pack types'], ['shop', 'Shop'], ['tracking', 'Tracking']];
 
 function Users() {
   const { user: me } = useAuth();
@@ -154,6 +154,100 @@ function Categories() {
   );
 }
 
+function PackTypes() {
+  const [types, setTypes] = useState([]);
+  const [name, setName] = useState('');
+  const [size, setSize] = useState('');
+  const [fe, setFe] = useState({});
+  const [editing, setEditing] = useState(null);
+  const [ed, setEd] = useState({ name: '', size: '' });
+  const [err, setErr] = useState('');
+  const load = useCallback(() => { api.get('/pack-types', { params: { all: 1 } }).then((r) => setTypes(Array.isArray(r.data) ? r.data : r.data.packTypes || [])).catch((e) => setErr(apiError(e).message)); }, []);
+  useEffect(load, [load]);
+
+  const run = async (fn) => {
+    setErr(''); setFe({});
+    try { await fn(); load(); return true; } catch (e) { const x = apiError(e); setErr(x.message); setFe(x.fields); return false; }
+  };
+  const sizeVal = (v) => (String(v).trim() === '' ? null : Number(v));
+
+  const add = (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setFe({ name: 'Enter a name.' }); return; }
+    run(async () => { await api.post('/pack-types', { name: name.trim(), defaultSize: sizeVal(size) }); setName(''); setSize(''); });
+  };
+  const save = (e) => {
+    e.preventDefault();
+    run(async () => { await api.put('/pack-types/' + editing, { name: ed.name.trim(), defaultSize: sizeVal(ed.size) }); setEditing(null); });
+  };
+  const del = (t) => {
+    if (window.confirm(`Delete the pack type “${t.name}”?`)) run(() => api.delete('/pack-types/' + t.id));
+  };
+
+  return (
+    <>
+      {err && <div role="alert" className="banner-err">{err}</div>}
+      <form className="card inline-form" onSubmit={add} noValidate>
+        <div className="field" style={{ flex: '1 1 200px' }}>
+          <label htmlFor="pt-new">New pack type</label>
+          <input id="pt-new" className={'input' + (fe.name ? ' invalid' : '')} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sack" aria-invalid={!!fe.name} />
+          {fe.name && <span className="err">{fe.name}</span>}
+        </div>
+        <div className="field" style={{ flex: '0 1 180px' }}>
+          <label htmlFor="pt-size">Default size (optional)</label>
+          <input id="pt-size" type="number" min="2" step="1" inputMode="numeric" className={'input mono' + (fe.defaultSize ? ' invalid' : '')} value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. 12" />
+          {fe.defaultSize && <span className="err">{fe.defaultSize}</span>}
+        </div>
+        <button type="submit" className="btn btn-primary">Add pack type</button>
+      </form>
+      <div className="card">
+        <h2 className="h2" style={{ marginBottom: 4 }}>Pack types</h2>
+        <p className="page-sub" style={{ margin: '0 0 12px' }}>Bundles an item can be sold in at a lower price. A type in use can be deactivated but not deleted.</p>
+        <div className="table-wrap">
+          <table className="tbl" style={{ minWidth: 560 }}>
+            <thead><tr><th>Name</th><th className="num">Default size</th><th className="num">Items</th><th>Active</th><th><span className="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {types.map((t) => (
+                <tr key={t.id}>
+                  {editing === t.id ? (
+                    <td colSpan={3}>
+                      <form className="row-actions" onSubmit={save}>
+                        <input className="input" aria-label={`Name for ${t.name}`} value={ed.name} onChange={(e) => setEd((p) => ({ ...p, name: e.target.value }))} autoFocus style={{ width: 170 }} />
+                        <input className="input mono" type="number" min="2" step="1" aria-label={`Default size for ${t.name}`} placeholder="Size" value={ed.size} onChange={(e) => setEd((p) => ({ ...p, size: e.target.value }))} style={{ width: 100 }} />
+                        <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                      </form>
+                    </td>
+                  ) : (
+                    <>
+                      <td>{t.name}</td>
+                      <td className="num">{t.defaultSize ?? '—'}</td>
+                      <td className="num">{t.itemCount ?? 0}</td>
+                    </>
+                  )}
+                  <td>
+                    <button type="button" className={'btn btn-sm ' + (t.active ? 'btn-secondary' : 'btn-ghost')} style={t.active ? undefined : { border: '1px solid var(--input-border)' }} aria-pressed={!!t.active} aria-label={`${t.name} is ${t.active ? 'active' : 'inactive'}`} onClick={() => run(() => api.put('/pack-types/' + t.id, { active: !t.active }))}>
+                      {t.active ? 'Active' : 'Inactive'}
+                    </button>
+                  </td>
+                  <td>
+                    {editing !== t.id && (
+                      <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditing(t.id); setEd({ name: t.name, size: t.defaultSize ?? '' }); }}>Edit</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => del(t)}>Delete</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Shop() {
   const { settings, refreshSettings } = useAuth();
   const [name, setName] = useState(settings?.shopName || '');
@@ -250,6 +344,7 @@ export default function Admin() {
       </div>
       {tab === 'users' && <Users />}
       {tab === 'categories' && <Categories />}
+      {tab === 'packs' && <PackTypes />}
       {tab === 'shop' && <Shop />}
       {tab === 'tracking' && <Tracking />}
     </div>

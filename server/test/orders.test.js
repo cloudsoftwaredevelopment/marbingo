@@ -1,17 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fieldPrice, priceLine, mergeLines, deliveryQuantities, parseDate } = require('../src/lib/orders');
+const { priceLine, mergeLines, deliveryQuantities, parseDate } = require('../src/lib/orders');
 
-test('fieldPrice uses wholesale, falling back to selling price', () => {
-  assert.equal(fieldPrice({ sellingPrice: 6200, wholesalePrice: 5600 }), 5600);
-  assert.equal(fieldPrice({ sellingPrice: 6200, wholesalePrice: null }), 6200);
-  assert.equal(fieldPrice({ sellingPrice: 6200 }), 6200);
+const SACK = { id: 1, packTypeId: 5, size: 50, price: 290000, packType: { name: 'Sack' } };
+
+test('priceLine prices packs plus loose and snapshots retail + packs', () => {
+  const l = priceLine({ id: 1, sellingPrice: 6200, packs: [SACK] }, 53);
+  assert.equal(l.unitPrice, 6200);
+  assert.equal(l.lineTotal, 290000 + 3 * 6200);
+  assert.deepEqual(l.pricing, { retail: 6200, packs: [{ packTypeId: 5, name: 'Sack', size: 50, price: 290000 }] });
+  assert.equal(l.breakdown.length, 2);
 });
 
-test('priceLine totals qty at the field price', () => {
-  assert.deepEqual(priceLine({ id: 1, sellingPrice: 6200, wholesalePrice: 5600 }, 20),
-    { itemId: 1, qty: 20, unitPrice: 5600, lineTotal: 112000 });
-  assert.equal(priceLine({ id: 2, sellingPrice: 100, wholesalePrice: null }, 3).lineTotal, 300);
+test('priceLine without packs is qty x retail', () => {
+  const l = priceLine({ id: 2, sellingPrice: 100, packs: [] }, 3);
+  assert.equal(l.lineTotal, 300);
+  assert.deepEqual(l.breakdown, [{ packTypeId: null, name: null, size: 1, count: 3, price: 100, amount: 300 }]);
 });
 
 test('mergeLines merges duplicates and validates', () => {

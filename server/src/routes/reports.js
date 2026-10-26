@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { wrap } = require('../lib/http');
 const { resolvePeriod, bucketIndex } = require('../lib/periods');
 const { turnover } = require('../lib/turnover');
+const { aggregateSoldAs } = require('../lib/packs');
 
 router.use(authenticate);
 
@@ -19,20 +20,20 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
     });
   }
 
-  const [sales, rows, stores] = await Promise.all([
+  const [sales, rows, stores, soldRows] = await Promise.all([
     prisma.sale.findMany({
       where: { soldAt: { gte: p.from, lt: p.to } },
       select: { soldAt: true, total: true },
     }),
     prisma.$queryRaw`
-      SELECT i.id, i.name, c.name AS category,
+      SELECT i.id, i.name, i.unit, c.name AS category,
              SUM(l.qty)::int AS units, SUM(l.line_total)::int AS revenue
       FROM sale_lines l
       JOIN sales s ON s.id = l.sale_id
       JOIN items i ON i.id = l.item_id
       LEFT JOIN categories c ON c.id = i.category_id
       WHERE s.sold_at >= ${p.from} AND s.sold_at < ${p.to}
-      GROUP BY i.id, i.name, c.name
+      GROUP BY i.id, i.name, i.unit, c.name
       ORDER BY revenue DESC, i.name`,
     prisma.$queryRaw`
       SELECT c.id, c.name, COUNT(*)::int AS orders, SUM(s.total)::int AS revenue
@@ -41,7 +42,13 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
       WHERE s.sold_at >= ${p.from} AND s.sold_at < ${p.to}
       GROUP BY c.id, c.name
       ORDER BY revenue DESC, c.name`,
+    prisma.$queryRaw`
+      SELECT l.item_id AS "itemId", l.qty, l.breakdown
+      FROM sale_lines l
+      JOIN sales s ON s.id = l.sale_id
+      WHERE s.sold_at >= ${p.from} AND s.sold_at < ${p.to}`,
   ]);
+  const sold = aggregateSoldAs(soldRows);
 
   const values = p.buckets.map(() => 0);
   let gross = 0;
@@ -61,7 +68,10 @@ router.get('/sales', requireRole('MANAGER', 'INVENTORY'), wrap(async (req, res) 
       .map((b, i) => ({ label: b.label, value: values[i], upcoming: b.upcoming, offHours: b.offHours }))
       .filter((b) => !b.offHours || b.value > 0)
       .map(({ offHours, ...b }) => b),
-    items: rows.map((r) => ({ id: r.id, name: r.name, category: r.category, units: r.units, revenue: r.revenue })),
+    items: rows.map((r) => {
+      const s = sold.get(r.id) || { soldAs: [], loose: 0 };
+      return { id: r.id, name: r.name, unit: r.unit, category: r.category, units: r.units, revenue: r.revenue, soldAs: s.soldAs, loose: s.loose };
+    }),
     stores: stores.map((r) => ({ id: r.id, name: r.name, orders: r.orders, revenue: r.revenue })),
   });
 }));

@@ -28,11 +28,25 @@ data class ItemDto(
     val categoryId: Int?,
     val category: String?,
     val sellingPrice: Long,
-    val wholesalePrice: Long?,
-    val fieldPrice: Long,
     val qtyOnHand: Int,
     val imageUrl: String?,
     val updatedAt: String,
+    /** Wholesale bundles (docs/pricing.md), sorted by size descending. Empty from older servers. */
+    val packs: List<PackDto> = emptyList(),
+)
+
+data class PackDto(val id: Int? = null, val packTypeId: Int, val name: String, val size: Int, val price: Long)
+
+data class PackTypeDto(val id: Int, val name: String, val defaultSize: Int? = null, val sort: Int? = null, val active: Boolean? = null)
+
+/** One row of a price breakdown: a pack (name != null) or the loose units (packTypeId and name null, size 1). */
+data class PricePartDto(
+    val packTypeId: Int?,
+    val name: String?,
+    val size: Int,
+    val count: Int,
+    val price: Long,
+    val amount: Long,
 )
 
 data class CategoryDto(val id: Int, val name: String)
@@ -67,6 +81,8 @@ data class OrderLineDto(
     val unitPrice: Long,
     val lineTotal: Long,
     val deliveredQty: Int?,
+    val breakdown: List<PricePartDto>? = null,
+    val deliveredBreakdown: List<PricePartDto>? = null,
 )
 
 data class OrderDto(
@@ -93,6 +109,7 @@ data class SyncPullResponse(
     val categories: List<CategoryDto>,
     val customers: List<CustomerDto>,
     val orders: List<OrderDto>,
+    val packTypes: List<PackTypeDto> = emptyList(),
     val trackingSchedule: TrackingScheduleDto? = null,
     val trackingConsentAt: String? = null,
 )

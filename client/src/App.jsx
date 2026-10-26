@@ -3,6 +3,7 @@ import RequireAuth from './components/RequireAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import SalesReport from './pages/SalesReport';
+import Inventory from './pages/Inventory';
 import AddItem from './pages/AddItem';
 import Profile from './pages/Profile';
 import Pos from './pages/Pos';
@@ -18,7 +19,9 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<RequireAuth cap="reports"><SalesReport /></RequireAuth>} />
-        <Route path="items/new" element={<RequireAuth cap="items"><AddItem /></RequireAuth>} />
+        <Route path="items" element={<RequireAuth cap="items"><Inventory /></RequireAuth>} />
+        <Route path="items/:id/edit" element={<RequireAuth cap="items"><AddItem key="edit" /></RequireAuth>} />
+        <Route path="items/new" element={<RequireAuth cap="items"><AddItem key="new" /></RequireAuth>} />
         <Route path="pos" element={<RequireAuth cap="pos"><Pos /></RequireAuth>} />
         <Route path="orders" element={<RequireAuth cap="orders"><Orders /></RequireAuth>} />
         <Route path="stores" element={<RequireAuth cap="stores"><Stores /></RequireAuth>} />

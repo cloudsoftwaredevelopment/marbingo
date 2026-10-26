@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api, { apiError } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { peso, unitPlural } from '../lib/format';
+import { packLabel, partsSummary, partsWithMoney, peso, unitPlural } from '../lib/format';
+import { priceQty, suggestUpsell } from '../lib/pricing';
 import '../styles/forms.css';
 
 // Tolerate a few response shapes for items.
@@ -10,7 +11,8 @@ const norm = (i) => ({
   name: i.name,
   sku: i.sku,
   unit: i.unit,
-  price: i.price ?? i.sellingPrice ?? 0,
+  price: i.price ?? i.sellingPrice ?? 0, // retail per unit
+  packs: (i.packs || []).map((p) => ({ packTypeId: p.packTypeId, name: p.name, size: p.size, price: p.price })),
   stock: i.qtyOnHand ?? i.qty ?? 0,
   category: typeof i.category === 'string' ? i.category : i.category?.name || i.categoryName || ''
 });
@@ -93,14 +95,16 @@ export default function Pos() {
   const clear = () => { setCart([]); setErr(''); scanRef.current?.focus(); };
 
   const count = cart.reduce((s, l) => s + l.qty, 0);
-  const total = cart.reduce((s, l) => s + l.qty * l.price, 0);
+  // Every line is priced live at the cheapest pack mix; the server re-prices the same way on save.
+  const priced = cart.map((l) => ({ l, r: priceQty(l.qty, l.price, l.packs), up: suggestUpsell(l.qty, l.price, l.packs) }));
+  const total = priced.reduce((s, x) => s + x.r.total, 0);
 
   async function complete() {
     setBusy(true); setErr(''); setOk('');
     try {
       const { data } = await api.post('/sales', { lines: cart.map((l) => ({ itemId: l.id, qty: l.qty })) });
       const sale = data.sale || data;
-      setOk(`Sale #${sale.id} recorded · ${peso(sale.total ?? total)}`);
+      setOk(`Sale #${sale.id} recorded · ${peso(sale.total)}`);
       setCart([]);
       loadMine();
       scanRef.current?.focus();
@@ -136,7 +140,8 @@ export default function Pos() {
                     <button type="button" className="result-btn" disabled={i.stock <= 0} onClick={() => add(i)}>
                       <span><strong>{i.name}</strong><br /><span className="meta">{i.category || 'No category'}</span></span>
                       <span style={{ textAlign: 'right' }}>
-                        <span className="mono">{peso(i.price)}</span><br />
+                        <span className="mono">{peso(i.price)}</span>{i.packs.length > 0 && <span className="meta mono"> / {i.unit}</span>}<br />
+                        {i.packs.map((p) => <span key={p.packTypeId} className="meta mono" style={{ display: 'block' }}>{packLabel(p, i.unit).replace(' · ', ' ')}</span>)}
                         <span className="meta">{i.stock > 0 ? `${i.stock} ${unitPlural(i.unit)} left` : 'Out of stock'}</span>
                       </span>
                     </button>
@@ -151,11 +156,20 @@ export default function Pos() {
             {cart.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No items yet. Scan a barcode or search above.</p> : (
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Item</th><th className="num">Unit price</th><th>Qty</th><th className="num">Total</th><th><span className="sr-only">Remove</span></th></tr></thead>
+                  <thead><tr><th>Item</th><th className="num">Retail price</th><th>Qty</th><th className="num">Total</th><th><span className="sr-only">Remove</span></th></tr></thead>
                   <tbody>
-                    {cart.map((l) => (
+                    {priced.map(({ l, r, up }) => (
                       <tr key={l.id}>
-                        <td>{l.name}</td>
+                        <td style={{ minWidth: 220 }}>
+                          {l.name}
+                          {l.packs.length > 0 && <span className="sub-note">{partsWithMoney(r.parts, l.unit)}</span>}
+                          {up && l.qty + up.addQty <= l.stock && (
+                            <span className="upsell">
+                              <span>Add {up.addQty} {unitPlural(l.unit)} → pay {peso(up.saving)} less</span>
+                              <button type="button" className="btn btn-secondary btn-sm" aria-label={`Add ${up.addQty} ${unitPlural(l.unit)} of ${l.name} and pay ${peso(up.saving)} less`} onClick={() => setQty(l.id, l.qty + up.addQty)}>Add</button>
+                            </span>
+                          )}
+                        </td>
                         <td className="num">{peso(l.price)}</td>
                         <td>
                           <div className="stepper">
@@ -164,7 +178,7 @@ export default function Pos() {
                             <button type="button" className="btn btn-secondary btn-icon" aria-label={`Increase ${l.name}`} disabled={l.qty >= l.stock} onClick={() => setQty(l.id, l.qty + 1)}>+</button>
                           </div>
                         </td>
-                        <td className="num">{peso(l.qty * l.price)}</td>
+                        <td className="num">{peso(r.total)}</td>
                         <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(l.id)} aria-label={`Remove ${l.name}`}>Remove</button></td>
                       </tr>
                     ))}
@@ -197,7 +211,11 @@ export default function Pos() {
                 {mine.sales.map((s) => (
                   <tr key={s.id}>
                     <td className="mono" style={{ whiteSpace: 'nowrap' }}>{timeFmt(s.soldAt)}</td>
-                    <td>{(s.lines || []).map((l) => `${l.name} × ${l.qty}`).join(', ')}</td>
+                    <td>{(s.lines || []).map((l) => (
+                      <span key={l.id ?? l.itemId ?? l.name} style={{ display: 'block' }}>
+                        {l.name} × {l.qty}{Array.isArray(l.breakdown) && l.breakdown.some((x) => x.name) && <span className="sub-note">{partsSummary(l.breakdown, l.unit)}</span>}
+                      </span>
+                    ))}</td>
                     <td className="num">{peso(s.total)}</td>
                   </tr>
                 ))}
