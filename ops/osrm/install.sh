@@ -45,6 +45,8 @@ fi
 
 bash /var/www/marbingo/ops/osrm/build-map.sh
 
+id osrm >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin osrm
+chown -R osrm:osrm /opt/osrm/data
 install -m 644 /var/www/marbingo/ops/osrm/osrm-routed.service /etc/systemd/system/osrm-routed.service
 systemctl daemon-reload
 systemctl enable --now osrm-routed

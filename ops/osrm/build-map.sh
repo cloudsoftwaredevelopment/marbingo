@@ -13,5 +13,6 @@ osmium extract -b "$BBOX" philippines-latest.osm.pbf -o region.new.osm.pbf --ove
 /opt/osrm/bin/osrm-customize region.new.osrm
 for f in region.new.osrm*; do mv "$f" "${f/region.new/region}"; done
 mv region.new.osm.pbf region.osm.pbf
+chown -R osrm:osrm $D 2>/dev/null || true   # osrm-routed runs as the osrm system user
 systemctl restart osrm-routed 2>/dev/null || true
 echo "map built: $(du -sh $D | cut -f1)"
