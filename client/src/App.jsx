@@ -13,6 +13,7 @@ import Stores from './pages/Stores';
 import Trucks from './pages/Trucks';
 import TruckDetail from './pages/TruckDetail';
 import EcosystemMap from './pages/EcosystemMap';
+import Help from './pages/Help';
 
 // Layout renders <Outlet/> inside the shell with the sidebar.
 export default function App() {
@@ -32,6 +33,8 @@ export default function App() {
         <Route path="map" element={<RequireAuth cap="map"><EcosystemMap /></RequireAuth>} />
         <Route path="admin" element={<RequireAuth cap="admin"><Admin /></RequireAuth>} />
         <Route path="profile" element={<Profile />} />
+        <Route path="help" element={<Help />} />
+        <Route path="help/:articleId" element={<Help />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
