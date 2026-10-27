@@ -5,6 +5,7 @@ import ph.marbingo.field.data.*
 import ph.marbingo.field.tracking.TrackingRepository
 import ph.marbingo.field.tracking.TrackingState
 import ph.marbingo.field.ui.UiDeps
+import ph.marbingo.field.update.UpdateState
 import java.util.UUID
 
 /** In-memory repositories for previews and unit tests. */
@@ -149,6 +150,20 @@ class FakeLocator(var fix: GeoFix? = GeoFix(10.7202, 122.5621, 12.0), var permit
     override suspend fun currentFix(timeoutMs: Long): GeoFix? { calls++; return if (permitted) fix else null }
 }
 
+class FakeUpdate(initial: UpdateState = UpdateState.Idle) : UpdateRepository {
+    val current = MutableStateFlow(initial)
+    override val state: StateFlow<UpdateState> = current
+    val offerState = MutableStateFlow(initial as? UpdateState.Available)
+    override val offer: StateFlow<UpdateState.Available?> = offerState
+    var checks = 0
+    var installs = 0
+    var settingsOpened = 0
+    override suspend fun check(force: Boolean) { checks++ }
+    override suspend fun downloadAndInstall() { installs++ }
+    override fun openInstallSettings() { settingsOpened++ }
+    override suspend fun recheckPermission() {}
+}
+
 class FakeDeps(
     override val auth: FakeAuth = FakeAuth(),
     override val catalog: FakeCatalog = FakeCatalog(),
@@ -159,4 +174,5 @@ class FakeDeps(
     override val printer: FakePrinter = FakePrinter(),
     override val tracking: FakeTracking = FakeTracking(),
     override val locator: FakeLocator = FakeLocator(),
+    override val update: FakeUpdate = FakeUpdate(),
 ) : UiDeps

@@ -30,6 +30,9 @@ import ph.marbingo.field.ui.tracking.TrackingStatusCard
 import ph.marbingo.field.ui.tracking.trackingSummary
 import ph.marbingo.field.ui.theme.MbShapes
 import ph.marbingo.field.ui.theme.MbType
+import ph.marbingo.field.ui.update.UpdateAction
+import ph.marbingo.field.ui.update.updateStatusText
+import ph.marbingo.field.update.UpdateState
 
 class SettingsViewModel(private val deps: UiDeps) : ViewModel() {
     val session: StateFlow<Session?> = deps.auth.session.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -38,6 +41,21 @@ class SettingsViewModel(private val deps: UiDeps) : ViewModel() {
 
     val tracking: StateFlow<TrackingState?> = deps.tracking.state
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val update: StateFlow<UpdateState> = deps.update.state
+    val updateOffer: StateFlow<UpdateState.Available?> = deps.update.offer
+    private val _checking = MutableStateFlow(false)
+    val checking: StateFlow<Boolean> = _checking.asStateFlow()
+
+    fun checkForUpdates() {
+        if (_checking.value) return
+        _checking.value = true
+        viewModelScope.launch {
+            try { deps.update.check(force = true) } finally { _checking.value = false }
+        }
+    }
+    fun installUpdate() { viewModelScope.launch { deps.update.downloadAndInstall() } }
+    fun openInstallSettings() = deps.update.openInstallSettings()
 
     private val _devices = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val devices: StateFlow<List<Pair<String, String>>> = _devices.asStateFlow()
@@ -143,6 +161,9 @@ fun SettingsScreen(vm: SettingsViewModel, nav: NavController) {
     val busy by vm.busy.collectAsState()
     val forceText by vm.forceSignOutText.collectAsState()
     val tracking by vm.tracking.collectAsState()
+    val updateState by vm.update.collectAsState()
+    val updateOffer by vm.updateOffer.collectAsState()
+    val checkingUpdate by vm.checking.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var btGranted by remember { mutableStateOf(false) }
     val requestBt = rememberBluetoothPermission { granted ->
@@ -233,7 +254,20 @@ fun SettingsScreen(vm: SettingsViewModel, nav: NavController) {
             MbCard(Modifier.fillMaxWidth()) {
                 Row {
                     Text("App version", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Text(BuildConfig.VERSION_NAME, style = MbType.mono)
+                    Text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MbType.mono)
+                }
+                Spacer(Modifier.height(6.dp))
+                if (updateOffer == null || updateState !is UpdateState.Failed) { // with an offer, UpdateAction shows the error itself
+                    Text(
+                        updateStatusText(updateState), style = MaterialTheme.typography.bodyMedium,
+                        color = if (updateState is UpdateState.Failed) Mb.Danger else Mb.Muted,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                if (updateOffer != null) {
+                    UpdateAction(updateState, vm::installUpdate, vm::openInstallSettings)
+                } else {
+                    SecondaryButton("Check for updates", vm::checkForUpdates, enabled = !checkingUpdate)
                 }
             }
 

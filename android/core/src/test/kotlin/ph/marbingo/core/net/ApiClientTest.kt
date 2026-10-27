@@ -88,4 +88,24 @@ class ApiClientTest {
         assertTrue(ApiErrors.isRetryable(java.io.IOException()))
         assertFalse(ApiErrors.isRetryable(e))
     }
+
+    @Test fun latestAppParses200() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"versionCode":7,"versionName":"0.7","url":"/downloads/marbingo-field-v0.7.apk","sha256":"ab12","size":123,"minVersionCode":6,"notes":"Fixes","publishedAt":"2026-10-27T00:00:00.000Z"}"""))
+        val r = api.latestApp()
+        val u = r.body()!!
+        assertEquals(7, u.versionCode)
+        assertEquals("/downloads/marbingo-field-v0.7.apk", u.url)
+        assertEquals(123L, u.size)
+        assertEquals(6, u.minVersionCode)
+        assertEquals("Fixes", u.notes)
+        assertEquals("/api/app/latest", server.takeRequest().path)
+    }
+
+    @Test fun latestAppNothingPublishedIs204() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        val r = api.latestApp()
+        assertTrue(r.isSuccessful)
+        assertEquals(204, r.code())
+        assertNull(r.body())
+    }
 }

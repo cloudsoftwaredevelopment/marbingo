@@ -28,6 +28,11 @@ import ph.marbingo.field.ui.tracking.OnboardingViewModel
 import ph.marbingo.field.ui.tracking.TrackingSetupScreen
 import java.time.ZonedDateTime
 import java.io.File
+import org.junit.Assert.assertEquals
+import ph.marbingo.field.ui.preview.FakeAuth
+import ph.marbingo.field.ui.preview.FakeUpdate
+import ph.marbingo.field.update.UpdateInfo
+import ph.marbingo.field.update.UpdateState
 
 /**
  * Renders the real UI against the in-memory fakes and writes PNGs, so screens can be eyeballed
@@ -191,5 +196,57 @@ class ScreenshotTest {
         assumeTrue(dir != null)
         rule.setContent { FieldApp(depsOverride = FakeDeps()) }
         rule.onNodeWithText("Sell from truck").assertDoesNotExist()
+    }
+
+    private val offer = UpdateState.Available(
+        UpdateInfo(7, "0.7", "Faster sync and a fix for printing receipts.", "/downloads/marbingo-field-v0.7.apk", "ab", 25_000_000, 0),
+        required = false,
+    )
+    private val mandatory = offer.copy(info = offer.info.copy(minVersionCode = 7), required = true)
+
+    @Test fun homeUpdateBanner() {
+        assumeTrue(dir != null)
+        val update = FakeUpdate(offer)
+        rule.setContent { FieldApp(depsOverride = FakeDeps(update = update)) }
+        rule.onNodeWithText("Update available — v0.7").assertExists()
+        shot("28-home-update-banner")
+        update.current.value = UpdateState.Downloading(0.42f)
+        shot("29-home-update-downloading")
+        update.current.value = UpdateState.NeedsPermission
+        shot("30-home-update-needs-permission")
+        update.current.value = UpdateState.Failed("The download was damaged (checksum mismatch). Try again.")
+        shot("31-home-update-failed")
+    }
+
+    @Test fun updateRequiredScreen() {
+        assumeTrue(dir != null)
+        val update = FakeUpdate(mandatory)
+        rule.setContent { FieldApp(depsOverride = FakeDeps(update = update)) }
+        rule.onNodeWithText("Update required").assertExists()
+        shot("32-update-required")
+        rule.onNodeWithText("Update").performClick()
+        assertEquals(1, update.installs)
+        update.current.value = UpdateState.Downloading(0.6f)
+        shot("33-update-required-downloading")
+    }
+
+    @Test fun signInUpdateBannerAndSettingsCard() {
+        assumeTrue(dir != null)
+        val signedOut = FakeDeps(auth = FakeAuth(initial = null), update = FakeUpdate(offer))
+        rule.setContent { FieldApp(depsOverride = signedOut) }
+        rule.onNodeWithText("Update available — v0.7").assertExists()
+        shot("34-signin-update-banner")
+    }
+
+    @Test fun settingsVersionCard() {
+        assumeTrue(dir != null)
+        val update = FakeUpdate(UpdateState.UpToDate)
+        rule.setContent { FieldApp(depsOverride = FakeDeps(update = update)) }
+        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        rule.onNodeWithText("Check for updates").assertExists()
+        shot("35-settings-version-up-to-date")
+        rule.onNodeWithText("Check for updates").performClick()
+        rule.waitForIdle()
+        assertEquals(1, update.checks)
     }
 }

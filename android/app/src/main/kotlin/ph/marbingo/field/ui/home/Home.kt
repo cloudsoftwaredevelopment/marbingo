@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import ph.marbingo.field.data.*
 import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.ui.update.UpdateBannerHost
 import ph.marbingo.field.tracking.TrackingState
 import ph.marbingo.field.ui.tracking.TrackingStatusCard
 import ph.marbingo.field.ui.truck.TruckCard
@@ -101,6 +102,7 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
                     Text(greeting(session?.name), style = MaterialTheme.typography.headlineMedium)
                     Text("Take an order at a store, or check what's waiting.", style = MaterialTheme.typography.bodyMedium, color = Mb.Muted)
                 }
+                item { UpdateBannerHost() } // empty unless an update is on offer
                 tracking?.let { t ->
                     item { TrackingStatusCard(t, onClick = { nav.navigate(Routes.trackingSetup()) }) }
                 }

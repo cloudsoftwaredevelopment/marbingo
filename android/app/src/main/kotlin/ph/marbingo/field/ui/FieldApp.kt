@@ -37,6 +37,10 @@ import ph.marbingo.field.ui.tracking.OnboardingViewModel
 import ph.marbingo.field.ui.tracking.TrackingSetupScreen
 import kotlinx.coroutines.flow.first
 import ph.marbingo.field.ui.theme.MarbingoTheme
+import ph.marbingo.field.ui.update.UpdateGate
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 
 private sealed interface SessionState {
     data object Loading : SessionState
@@ -51,9 +55,18 @@ fun FieldApp(depsOverride: UiDeps? = null) {
         CompositionLocalProvider(LocalDeps provides deps) {
             val sessionFlow = remember(deps) { deps.auth.session.map<Session?, SessionState> { SessionState.Known(it) } }
             val state by sessionFlow.collectAsState(initial = SessionState.Loading)
-            when (val s = state) {
-                SessionState.Loading -> Box(Modifier.fillMaxSize().background(Mb.Ground))
-                is SessionState.Known -> AppNav(s.session)
+
+            // Back from the "allow installs" settings screen: continue a waiting update.
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(deps, lifecycle) {
+                lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { deps.update.recheckPermission() }
+            }
+
+            UpdateGate {
+                when (val s = state) {
+                    SessionState.Loading -> Box(Modifier.fillMaxSize().background(Mb.Ground))
+                    is SessionState.Known -> AppNav(s.session)
+                }
             }
         }
     }

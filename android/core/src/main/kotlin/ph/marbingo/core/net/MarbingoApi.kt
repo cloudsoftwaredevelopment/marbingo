@@ -1,6 +1,7 @@
 package ph.marbingo.core.net
 
 import ph.marbingo.core.model.*
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -14,6 +15,9 @@ interface MarbingoApi {
     @POST("api/auth/refresh") suspend fun refresh(@Body body: RefreshRequest): TokenPair
     @GET("api/auth/me") suspend fun me(): MeResponse
     @GET("api/settings") suspend fun settings(): SettingsDto
+
+    /** Public. 200 with the newest published build, or 204 (body null) when nothing is published. */
+    @GET("api/app/latest") suspend fun latestApp(): Response<AppUpdateDto>
 
     @GET("api/sync/pull") suspend fun pull(@Query("since") since: String?): SyncPullResponse
     @POST("api/orders/batch") suspend fun pushOrders(@Body body: OrderBatchRequest): OrderBatchResponse

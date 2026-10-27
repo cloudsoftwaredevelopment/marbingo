@@ -22,6 +22,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:ignore="BatteryLife" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- In-app updates: install the downloaded APK through PackageInstaller -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -64,6 +66,9 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <!-- Receives the PackageInstaller session result of an in-app update -->
+        <receiver android:name=".update.InstallResultReceiver" android:exported="false" />
 
         <!-- Shares generated receipt PDFs from cache/receipts/ -->
         <provider

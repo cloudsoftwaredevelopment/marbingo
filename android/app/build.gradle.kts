@@ -18,6 +18,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The staging APK is the one agents install, and Android only upgrades an app signed with the SAME key, so this key
+    // must never change (a new one would force everyone to uninstall and lose queued orders). It is a copy of the debug
+    // keystore, so tablets that still run the old debug-signed build keep upgrading. Kept outside the repo.
+    val stagingKeystore = file("/root/keystores/marbingo-staging.keystore")
+    val stagingSigning = if (stagingKeystore.exists()) {
+        signingConfigs.create("staging") {
+            storeFile = stagingKeystore
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    } else signingConfigs.getByName("debug") // machines without the keystore (CI, other dev boxes)
+
     buildTypes {
         debug {
             // Temporary test host over plain HTTP. Cleartext is allowed for this host only,
@@ -34,10 +47,10 @@ android {
         }
 
         // Small, R8-minified build for the installed test app: same applicationId and API host as debug, signed with
-        // the debug key, so it installs over (upgrades) the debug APK. Smaller APK = faster Play Protect scan.
+        // the debug-equivalent key above, so it installs over (upgrades) the debug APK. Smaller APK = faster Play Protect scan.
         create("staging") {
             initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = stagingSigning
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-staging"
             isDebuggable = false

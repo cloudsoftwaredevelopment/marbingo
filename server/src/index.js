@@ -28,6 +28,7 @@ app.use('/api/trucks', require('./routes/trucks'));
 app.use('/api/truck-periods', require('./routes/truckPeriods'));
 app.use('/api/truck-transfers', require('./routes/truckTransfers'));
 app.use('/api/truck-sales', require('./routes/truckSales'));
+app.use('/api/app', require('./routes/app'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

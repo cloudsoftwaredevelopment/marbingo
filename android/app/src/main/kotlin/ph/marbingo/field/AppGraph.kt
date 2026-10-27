@@ -12,6 +12,10 @@ import ph.marbingo.field.sync.SyncEngine
 import ph.marbingo.field.sync.SyncScheduler
 import ph.marbingo.field.sync.SyncTrigger
 import ph.marbingo.field.tracking.*
+import ph.marbingo.field.update.AndroidUpdatePlatform
+import ph.marbingo.field.update.UpdateRepositoryImpl
+import okhttp3.OkHttpClient
+import java.io.File
 
 /**
  * Manual DI: builds the singletons lazily. The UI only sees the repository interfaces.
@@ -48,11 +52,20 @@ class AppGraph(context: Context) {
     val stores: StoreRepository by lazy { StoreRepositoryImpl(db.customers(), scheduler) }
     val orders: OrderRepository by lazy { OrderRepositoryImpl(db, api, tokenStore, scheduler) }
     val truck: TruckRepository by lazy { TruckRepositoryImpl(db, tokenStore, scheduler) }
+    internal val updateImpl: UpdateRepositoryImpl by lazy {
+        UpdateRepositoryImpl(
+            api, OkHttpClient(), BuildConfig.API_BASE_URL, File(appContext.cacheDir, "updates"),
+            BuildConfig.VERSION_CODE, AndroidUpdatePlatform(appContext, BuildConfig.VERSION_CODE),
+        )
+    }
+    val update: UpdateRepository get() = updateImpl
     val sync: SyncRepository by lazy { SyncRepositoryImpl(db, scheduler) }
     val printer: PrinterRepository by lazy { PrinterRepositoryImpl(appContext, db.customers()) }
 
-    /** Called from Application.onCreate: resume periodic sync when already signed in. */
+    /** Called from Application.onCreate: check for updates, and resume periodic sync when already signed in. */
     fun onAppStart() {
+        // Updates need no sign-in: drop old downloads, then look for a newer build (throttled, fails quietly).
+        appScope.launch { updateImpl.cleanStale(); update.check() }
         if (!tokenStore.accessToken.isNullOrBlank()) {
             scheduler.start()
             scheduler.syncNow()

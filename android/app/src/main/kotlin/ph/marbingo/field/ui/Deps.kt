@@ -19,6 +19,7 @@ interface UiDeps {
     val printer: PrinterRepository
     val tracking: TrackingRepository
     val locator: DeviceLocator
+    val update: UpdateRepository
 }
 
 class GraphDeps(context: Context) : UiDeps {
@@ -33,6 +34,7 @@ class GraphDeps(context: Context) : UiDeps {
     override val printer get() = graph.printer
     override val tracking get() = graph.tracking
     override val locator get() = graph.locator
+    override val update get() = graph.update
 }
 
 val LocalDeps = staticCompositionLocalOf<UiDeps> { error("UiDeps not provided") }

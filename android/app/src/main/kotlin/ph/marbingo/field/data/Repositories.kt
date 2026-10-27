@@ -1,6 +1,8 @@
 package ph.marbingo.field.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import ph.marbingo.field.update.UpdateState
 
 // Contracts between the data layer (Agent C) and the UI (Agent D).
 // Everything reads from the local Room cache so the app works offline.
@@ -46,6 +48,21 @@ interface OrderRepository {
     suspend fun place(storeClientUuid: String, lines: List<CartLine>, notes: String?): String
     /** Cancels a pending order (online if synced; a queued order is just removed). */
     suspend fun cancel(clientUuid: String, reason: String)
+}
+
+/** In-app updates (OTA): the check needs no sign-in. */
+interface UpdateRepository {
+    val state: StateFlow<UpdateState>
+    /** The update on offer; kept through download / permission / failure states so the UI can still name it. Null when up to date. */
+    val offer: StateFlow<UpdateState.Available?>
+    /** [force] = user pressed "Check for updates"; automatic checks (start, after sync) are throttled to once per 30 min and fail quietly. */
+    suspend fun check(force: Boolean = false)
+    /** Downloads, verifies and hands the APK to the system installer. */
+    suspend fun downloadAndInstall()
+    /** Opens the system screen where the user allows installs from this app. */
+    fun openInstallSettings()
+    /** Call on resume: continues the install once the user has granted the permission. */
+    suspend fun recheckPermission()
 }
 
 interface SyncRepository {

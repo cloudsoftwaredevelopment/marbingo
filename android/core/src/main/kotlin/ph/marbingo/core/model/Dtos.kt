@@ -20,6 +20,18 @@ data class TokenPair(val accessToken: String, val refreshToken: String)
 data class MeResponse(val user: UserDto)
 data class SettingsDto(val shopName: String, val shopMark: String? = null)
 
+/** GET /api/app/latest. [url] is relative to the API base URL; [sha256] is lowercase hex. */
+data class AppUpdateDto(
+    val versionCode: Int,
+    val versionName: String,
+    val url: String,
+    val sha256: String,
+    val size: Long,
+    val minVersionCode: Int = 0,
+    val notes: String = "",
+    val publishedAt: String? = null,
+)
+
 data class ItemDto(
     val id: Int,
     val name: String,

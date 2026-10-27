@@ -6,3 +6,4 @@ client/dist/
 
 downloads/*.apk
 downloads/index.html
+downloads/latest.json

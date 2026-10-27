@@ -61,12 +61,13 @@ Kotlin + Jetpack Compose, same toolchain/patterns as `/var/www/recit/android`. `
 cd android && source /etc/profile.d/android-sdk.sh
 ./gradlew :core:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 SCREENSHOT_DIR=/tmp/shots ./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest*'   # render screens headlessly
-cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-debug.apk && node ../scripts/refresh-downloads.js
+bash ../scripts/release-apk.sh "what changed"   # publish an OTA update (bump version first)
 ```
 - No emulator on this box: only JVM/Robolectric tests. `LiveServerTest` hits the live server (skips if unreachable) and **creates a real order + store** — reseed afterwards.
 - Debug build → `http://marbingo.62-84-181-147.sslip.io/` (cleartext allowed for that host only, `src/debug/res/xml/network_security_config.xml`). Release (`API_BASE_URL` = `https://CHANGE-ME/`) needs the real HTTPS domain and a keystore kept **outside the repo** (`/root/keystores/`).
 - Never use destructive Room migrations — any entity change needs a real `Migration` (agents may have queued orders on-device).
 - Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each published build; installing over the old APK keeps queued orders.
+- **OTA updates** (`app/.../update/`): tablets poll public `GET /api/app/latest` (serves `downloads/latest.json`) on start, after syncs (≤ every 30 min) and from Settings; banner → download → size+SHA-256 check → PackageInstaller (user taps Install; queued orders kept). Release: bump version, then `bash scripts/release-apk.sh "notes"` (`--required` makes older versions show a blocking "Update required" screen; sync keeps running). Staging is signed with `/root/keystores/marbingo-staging.keystore` (copy of the old debug key) — **never change or lose it**, or tablets can't update without uninstalling (losing queued orders).
 - APKs: `downloads/` served by nginx at `/downloads/` (MIME `application/vnd.android.package-archive`); APKs + `index.html` are gitignored.
 
 - Build types: `debug` (43 MB) and `staging` (R8-minified, debug-signed, same applicationId `ph.marbingo.field.debug` so it upgrades the debug app, ~25 MB — publish this one as `marbingo-field-v<VER>.apk`; smaller APKs pass Play Protect's scan faster). `./gradlew :app:assembleStaging`.

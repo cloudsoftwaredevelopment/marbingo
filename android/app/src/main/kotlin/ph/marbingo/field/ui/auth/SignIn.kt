@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.ui.update.UpdateBannerHost
 
 data class SignInState(
     val email: String = "",
@@ -77,6 +78,7 @@ fun SignInScreen(vm: SignInViewModel) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            UpdateBannerHost()
             ShopMark("MB", 72.dp)
             Text("Marbingo Field", style = MaterialTheme.typography.headlineMedium)
             Text("Sign in to take orders at your stores.", style = MaterialTheme.typography.bodyMedium, color = Mb.Muted)
