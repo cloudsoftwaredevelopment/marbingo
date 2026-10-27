@@ -136,8 +136,23 @@ async function requestTransfer(truckId, userId, { kind, note, lines }) {
   if (kind !== 'load' && (!period || period.status !== 'open')) {
     throw new TruckError(409, 'Top-ups and returns need an open period.');
   }
-  const items = await prisma.item.findMany({ where: { id: { in: merged.map((l) => l.itemId) } }, select: { id: true } });
+  const items = await prisma.item.findMany({ where: { id: { in: merged.map((l) => l.itemId) } }, select: { id: true, name: true } });
   if (items.length !== merged.length) throw new TruckError(400, 'One of the items does not exist.');
+  if (kind === 'return') {
+    // Refuse up front what approval would refuse: truck stock minus returns already waiting for approval.
+    const ids = merged.map((l) => l.itemId);
+    const stock = await prisma.truckStock.findMany({ where: { truckId, itemId: { in: ids } } });
+    const pending = await prisma.truckTransferLine.groupBy({
+      by: ['itemId'], _sum: { qty: true },
+      where: { itemId: { in: ids }, transfer: { truckId, kind: 'return', status: 'pending' } },
+    });
+    const short = [];
+    for (const l of merged) {
+      const have = (stock.find((s) => s.itemId === l.itemId)?.qty || 0) - (pending.find((p) => p.itemId === l.itemId)?._sum.qty || 0);
+      if (l.qty > have) short.push({ itemId: l.itemId, name: items.find((i) => i.id === l.itemId).name, need: l.qty, have: Math.max(have, 0) });
+    }
+    if (short.length) throw new TruckError(409, shortMessage('stock on the truck', short), { short });
+  }
   const t = await prisma.truckTransfer.create({
     data: {
       truckId, periodId: period.id, kind, note: note ? String(note).trim() || null : null, requestedById: userId,

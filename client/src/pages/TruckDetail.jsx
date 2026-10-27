@@ -5,7 +5,7 @@ import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../lib/roles';
 import { num, peso, unitPlural } from '../lib/format';
-import { ErrBanner, PeriodBadge, fmtDT, fullName, monthLabel, truckError } from '../components/TruckBits';
+import { ErrBanner, PeriodBadge, fmtDT, fullName, monthLabel, truckError, units } from '../components/TruckBits';
 import '../styles/forms.css';
 import '../styles/orders.css';
 import '../styles/trucks.css';
@@ -154,8 +154,8 @@ function ReportView({ r }) {
         </div>
       )}
       <div className="grid-fit" style={{ '--min': '170px' }}>
-        <div className="margin-box"><span className="t">Missing</span><span className="v">{num(r.totals.missingQty)} units</span><span className="trk-note">{peso(r.totals.missingValue)} at retail</span></div>
-        <div className="margin-box"><span className="t">Surplus</span><span className="v">{num(r.totals.surplusQty)} units</span><span className="trk-note">{peso(r.totals.surplusValue)} at retail</span></div>
+        <div className="margin-box"><span className="t">Missing</span><span className="v">{units(r.totals.missingQty)}</span><span className="trk-note">{peso(r.totals.missingValue)} at retail</span></div>
+        <div className="margin-box"><span className="t">Surplus</span><span className="v">{units(r.totals.surplusQty)}</span><span className="trk-note">{peso(r.totals.surplusValue)} at retail</span></div>
         {r.sales && <div className="margin-box"><span className="t">Truck sales</span><span className="v">{num(r.sales.count)} · {peso(r.sales.total)}</span>
           <span className="trk-note">{r.sales.oversold > 0 && <span className="trk-neg">{num(r.sales.oversold)} oversold</span>}{r.sales.oversold > 0 && r.sales.late > 0 && ' · '}{r.sales.late > 0 && `${num(r.sales.late)} late`}{!r.sales.oversold && !r.sales.late && 'none flagged'}</span></div>}
       </div>
@@ -198,7 +198,7 @@ function PrintReport({ r, shop }) {
       <div>Truck stock report · {r.truck.name}{r.truck.plate ? ` (${r.truck.plate})` : ''} · {monthLabel(r.month)}</div>
       <div>Driver: {r.truck.driverName || '—'} · {r.preview ? 'Preview' : 'Final'} · generated {fmtDT(r.generatedAt)}</div>
       <div className="verdict">{!r.counted ? 'NOT COUNTED YET' : r.matched ? 'MATCHED' : 'NOT MATCHED'}</div>
-      <div>Missing: {num(r.totals.missingQty)} units ({peso(r.totals.missingValue)}) · Surplus: {num(r.totals.surplusQty)} units ({peso(r.totals.surplusValue)})</div>
+      <div>Missing: {units(r.totals.missingQty)} ({peso(r.totals.missingValue)}) · Surplus: {units(r.totals.surplusQty)} ({peso(r.totals.surplusValue)})</div>
       {r.sales && <div>Truck sales: {num(r.sales.count)} ({peso(r.sales.total)}) · oversold {num(r.sales.oversold)} · late {num(r.sales.late)}</div>}
       <h2>Items</h2>
       <table>
@@ -218,6 +218,8 @@ function PrintReport({ r, shop }) {
     document.body
   );
 }
+
+const REPORT_KIND = { open: 'in progress (not counted)', counting: 'counting (live)', closed: 'final report' };
 
 export default function TruckDetail() {
   const { id } = useParams();
@@ -251,14 +253,17 @@ export default function TruckDetail() {
     }).catch((e) => setErr(truckError(e)));
   }, [curKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Report period: the one being counted, else the latest closed.
+  // Report period: the one being counted, else the latest closed. Re-picked when the current period changes
+  // (e.g. a new month was opened) so the selection never lags behind the list.
   const reportable = useMemo(() => (data?.periods || []).filter((p) => p.status !== 'draft'), [data]);
+  const pickedFor = useRef('');
   useEffect(() => {
     if (!data) return;
-    if (rpid && reportable.some((p) => p.id === rpid)) return;
+    if (rpid && reportable.some((p) => p.id === rpid) && pickedFor.current === curKey) return;
+    pickedFor.current = curKey;
     const pick = reportable.find((p) => p.status === 'counting') || reportable.find((p) => p.status === 'closed') || reportable[0];
     setRpid(pick ? pick.id : null);
-  }, [data, reportable, rpid]);
+  }, [data, reportable, rpid, curKey]);
   useEffect(() => {
     if (tab !== 'report' || !rpid) { return; }
     let live = true;
@@ -453,7 +458,7 @@ export default function TruckDetail() {
                 <div className="field">
                   <label htmlFor="rp-sel">Period</label>
                   <select id="rp-sel" className="select" value={rpid || ''} onChange={(e) => setRpid(Number(e.target.value))}>
-                    {reportable.map((p) => <option key={p.id} value={p.id}>{monthLabel(p.month)} · {p.status}</option>)}
+                    {reportable.map((p) => <option key={p.id} value={p.id}>{monthLabel(p.month)} · {REPORT_KIND[p.status]}</option>)}
                   </select>
                 </div>
                 <button type="button" className="btn btn-secondary" disabled={!report} onClick={() => setPrinting(true)}>Print</button>

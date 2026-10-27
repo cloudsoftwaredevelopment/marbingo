@@ -8,6 +8,8 @@ export const monthLabel = (m) => (m ? new Intl.DateTimeFormat('en-US', { month: 
 
 export const PERIOD_BADGE = { draft: 'badge-none', open: 'badge-in', counting: 'badge-low', closed: 'badge-none' };
 export const PERIOD_LABEL = { draft: 'Draft', open: 'Open', counting: 'Counting', closed: 'Closed' };
+export const units = (n) => `${num(n)} ${Math.abs(n) === 1 ? 'unit' : 'units'}`;
+
 export const PeriodBadge = ({ status }) => <span className={'badge ' + (PERIOD_BADGE[status] || 'badge-none')}>{PERIOD_LABEL[status] || status}</span>;
 
 // Axios error -> { message, fields, short?, uncounted? } (409s carry machine-readable lists).
@@ -22,10 +24,11 @@ export function ErrBanner({ err }) {
   const e = typeof err === 'string' ? { message: err } : err;
   return (
     <div role="alert" className="banner-err">
-      {e.message}
+      {/* The server message already names each short item; when the list follows, keep only its lead-in. */}
+      {e.short?.length > 0 || e.uncounted?.length > 0 ? e.message.replace(/:.*$/s, ':') : e.message}
       {e.short?.length > 0 && (
         <ul className="trk-short">
-          {e.short.map((s) => <li key={s.itemId}>{s.name}: need {num(s.need)}, have {num(s.have)}</li>)}
+          {e.short.map((s) => <li key={s.itemId}>{s.name}: {num(s.need)} needed, {num(s.have)} left</li>)}
         </ul>
       )}
       {e.uncounted?.length > 0 && (
