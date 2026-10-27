@@ -97,7 +97,7 @@ class FakeTruck(
     override fun observeAvailable(): Flow<Map<Int, Int>> = stockLines.map { l -> l.associate { it.itemId to it.available } }
     override fun observeStock(): Flow<List<TruckStockLine>> = stockLines
     override fun searchAvailable(query: String): Flow<List<Item>> = stockLines.map { l ->
-        l.filter { it.available > 0 }.mapNotNull { sl -> catalog.firstOrNull { it.id == sl.itemId }?.copy(qtyOnHand = sl.available) }
+        l.mapNotNull { sl -> catalog.firstOrNull { it.id == sl.itemId }?.copy(qtyOnHand = sl.available) }.sortedBy { it.qtyOnHand <= 0 }
             .filter { query.isBlank() || it.name.contains(query, true) }
     }
     override fun recent(limit: Int): Flow<List<Order>> = sales

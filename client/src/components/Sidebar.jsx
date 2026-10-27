@@ -34,6 +34,14 @@ const NAV = [
   { to: '/admin', label: 'Admin', cap: 'admin', icon: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></> }
 ];
 
+// Title for the small-screen top bar: the nav entry matching the current path (longest prefix wins).
+export function navTitle(pathname, user) {
+  const hit = NAV.filter((n) => (n.end ? pathname === n.to : pathname === n.to || pathname.startsWith(n.to === '/' ? '/__' : n.to + '/')))
+    .sort((a, b) => b.to.length - a.to.length)[0]
+    || (pathname.startsWith('/items/') ? NAV.find((n) => n.to === '/items') : null);
+  return hit ? (user?.role === 'AGENT' && hit.agentLabel ? hit.agentLabel : hit.label) : '';
+}
+
 const MODES = [{ id: 'turnover', label: 'Turnover' }, { id: 'sales', label: 'Sales' }];
 
 // Revenue mode is only offered to roles that can see the Sales report (server enforces this too).
@@ -114,7 +122,7 @@ function usePendingCount(enabled) {
   return n;
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }) {
   const { user, settings, logout } = useAuth();
   const pending = usePendingCount(can(user, 'orderActions'));
   const shop = settings?.shopName || 'Marbingo';
@@ -123,6 +131,11 @@ export default function Sidebar() {
   return (
     <aside className="sb" style={{ width: '100%', background: '#1C1B18', color: '#F4F2EC', fontFamily: "'IBM Plex Sans', system-ui, sans-serif", padding: '28px 18px 24px', display: 'flex', flexDirection: 'column', gap: 28, flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px' }}>
+        {onClose && (
+          <button type="button" className="sb-close" aria-label="Close menu" onClick={onClose}>
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        )}
         <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: D, fontWeight: 700, fontSize: 17 }}>{shopInitials(shop, settings.shopMark)}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ fontFamily: D, fontWeight: 700, fontSize: 18, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{shop}</span>

@@ -69,7 +69,7 @@ interface TruckRepository {
     /** itemId -> units still sellable (server stock minus queued, unsynced sales). Items not on the truck are absent. */
     fun observeAvailable(): Flow<Map<Int, Int>>
     fun observeStock(): Flow<List<TruckStockLine>>
-    /** Items on the truck with available > 0 (Item.qtyOnHand holds the available qty). */
+    /** Items on the truck, sellable first (Item.qtyOnHand holds the available qty; <= 0 means out or oversold). */
     fun searchAvailable(query: String): Flow<List<Item>>
     /** Truck sales as Orders (isSale = true, status DELIVERED) so lists and receipts can share the order UI. */
     fun recent(limit: Int = 100): Flow<List<Order>>

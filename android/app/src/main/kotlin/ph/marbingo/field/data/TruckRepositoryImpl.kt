@@ -21,7 +21,7 @@ class TruckRepositoryImpl(
     override fun observeTruck(): Flow<TruckInfo?> = combine(db.truck().observeMeta(), db.truck().observeStock()) { m, stock ->
         m?.let {
             TruckInfo(it.truckId, it.name, it.plate, it.driverName, it.periodStatus, it.periodMonth,
-                unitsOnBoard = stock.sumOf { r -> r.available.coerceAtLeast(0) })
+                unitsOnBoard = stock.sumOf { r -> r.available })
         }
     }
 
@@ -34,7 +34,8 @@ class TruckRepositoryImpl(
     override fun searchAvailable(query: String): Flow<List<Item>> =
         combine(db.items().searchOnTruck(query), db.truck().observeStock()) { items, rows ->
             val avail = rows.associate { it.itemId to it.available }
-            items.mapNotNull { iw -> (avail[iw.item.id] ?: 0).takeIf { it > 0 }?.let { iw.toModel().copy(qtyOnHand = it) } }
+            // Sold-out and oversold items stay listed (shown as out) so the agent sees them; they sort last and can't be added.
+            items.map { iw -> iw.toModel().copy(qtyOnHand = avail[iw.item.id] ?: 0) }.sortedBy { it.qtyOnHand <= 0 }
         }
 
     override fun recent(limit: Int): Flow<List<Order>> = db.truck().recent(limit).map { l -> l.map { it.toOrder() } }

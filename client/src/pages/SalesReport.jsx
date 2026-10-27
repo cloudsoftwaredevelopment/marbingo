@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api, { apiError } from '../lib/api';
 import { num, pesoCompact, pesoWhole, plural, unitPlural } from '../lib/format';
+import '../styles/forms.css';
 
 const D = "'Bricolage Grotesque', system-ui, sans-serif";
 const M = "'IBM Plex Mono', ui-monospace, monospace";
@@ -120,7 +121,7 @@ export default function SalesReport() {
               <h2 id="chart-h" style={h2Style}>Sales over time</h2>
               <span style={{ fontSize: 13, color: '#5E5A52' }}>{data?.unit || ''}</span>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-wrap">
               <div style={{ height: 270, minWidth: 420, display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid #DDD8CC' }}>
                 {buckets.map((b, i) => {
                   const up = b.upcoming;
@@ -146,7 +147,7 @@ export default function SalesReport() {
               <h2 id="items-h" style={h2Style}>Sales by item</h2>
               <span style={{ fontSize: 13, color: '#5E5A52' }}>Sorted by revenue</span>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-wrap">
               <div style={{ minWidth: 820, display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: ITEM_GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
                   <span>#</span><span>Item</span><span style={{ textAlign: 'right' }}>Units sold</span><span>Sold as</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of sales</span>
@@ -184,7 +185,7 @@ export default function SalesReport() {
               {stores.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 15, color: '#5E5A52' }}>No field sales in this period.</p>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="table-wrap">
                   <div style={{ minWidth: 640, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: STORE_GRID, gap: 16, padding: '0 0 10px', borderBottom: '1px solid #DDD8CC', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5E5A52' }}>
                       <span>#</span><span>Store</span><span style={{ textAlign: 'right' }}>Orders</span><span style={{ textAlign: 'right' }}>Revenue</span><span>Share of field sales</span>

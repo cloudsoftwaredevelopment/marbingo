@@ -70,6 +70,7 @@ fun SyncChip(o: Order) {
 fun OrderChips(o: Order, showSynced: Boolean = false) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (o.isSale) Chip("Sold", Tone.Good) else Chip(statusLabel(o.status), statusTone(o.status))
+        if (o.oversold) Chip("Oversold", Tone.Danger)
         if (o.syncState != SyncState.SYNCED || showSynced) SyncChip(o)
     }
 }

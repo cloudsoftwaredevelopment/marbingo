@@ -79,6 +79,8 @@ data class Order(
     val cancelledReason: String?,
     /** True for a truck sale (a paid sales receipt) shown next to orders; false for a booked order. */
     val isSale: Boolean = false,
+    /** Truck sale the server accepted with more than was on the truck (truck stock went negative). */
+    val oversold: Boolean = false,
 ) {
     /** "#12" once synced, otherwise a short local reference like "L-3F9A". Truck sales are prefixed "S". */
     val reference: String get() = (if (isSale) "S" else "") + (serverId?.let { "#$it" } ?: "L-" + clientUuid.take(4).uppercase())

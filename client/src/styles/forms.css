@@ -38,6 +38,14 @@ form.card { margin: 0; display: flex; flex-direction: column; gap: 18px; }
 
 /* tables / pos / admin */
 .table-wrap { overflow-x: auto; position: relative; } /* contains absolutely positioned .sr-only cells so they cannot widen the page */
+/* Edge shadows appear only on the side that has more columns to swipe to (the "local" covers hide them at the ends). */
+.table-wrap {
+  background:
+    linear-gradient(to right, var(--surface) 30%, rgba(255,255,255,0)) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, rgba(255,255,255,0)) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(28,27,24,.18), rgba(28,27,24,0)) left / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(28,27,24,.18), rgba(28,27,24,0)) right / 12px 100% no-repeat scroll;
+}
 .tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .tbl td { padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }

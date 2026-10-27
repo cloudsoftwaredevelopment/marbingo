@@ -178,11 +178,14 @@ class NewOrderViewModelTest {
         ),
     )
 
-    @Test fun truckSaleStartsOnItemsWithoutAStoreAndOnlyListsTruckStock() {
+    @Test fun truckSaleStartsOnItemsWithoutAStoreAndListsOutItemsLast() {
         val vm = NewOrderViewModel(truckDeps(), OrderMode.TRUCK_SALE)
         assertEquals(OrderStep.ITEMS, vm.state.value.step)
         val items = kotlinx.coroutines.runBlocking { vm.items.first { it.isNotEmpty() } }
-        assertEquals(listOf(1), items.map { it.id }) // oil has 0 on the truck
+        // Oil has 0 on the truck: still listed (shown as out), after the sellable items, and can't be added.
+        assertEquals(listOf(1, 2), items.map { it.id }); assertEquals(0, items[1].qtyOnHand)
+        vm.addItem(items[1])
+        assertTrue(vm.state.value.cart.isEmpty())
     }
 
     @Test fun truckSaleCapsQuantityAtAvailable() {

@@ -368,6 +368,16 @@ class SyncEngineTest {
         assertNull(truck.observeTruck().first())
     }
 
+    @Test fun oversoldItemStaysListedAsOutAndUnitsOnBoardMatchesTheServerSum() = runBlocking {
+        seedTruck(10)
+        pullBody = truckPull("""{"itemId":1,"qty":-3}""")
+        engine.run()
+        val listed = truck.searchAvailable("").first()
+        assertEquals(listOf(1), listed.map { it.id }); assertEquals(-3, listed.single().qtyOnHand)
+        assertEquals(-3, truck.observeTruck().first()!!.unitsOnBoard)
+        try { truck.placeSale(null, listOf(CartLine(listed.single(), 1))); fail() } catch (e: UserFacingException) { assertTrue(e.message!!.contains("not on the truck")) }
+    }
+
     @Test fun truckSaleQueuesAvailableArithmeticAndSyncs() = runBlocking {
         seedTruck(10)
         val item = db.items().byId(1)!!.toModel()

@@ -154,7 +154,7 @@ class ScreenshotTest {
     private fun truckDeps(status: String? = "open") = FakeDeps(
         truck = FakeTruck(
             TruckInfo(2, "Truck 2", "NEG 4821", "Pedro Alvarez", status, "2026-10", 527),
-            listOf(TruckStockLine(1, "Jasmine rice", "kg", 400, 380), TruckStockLine(2, "Cooking oil 1L", "btl", 12, 12), TruckStockLine(4, "Instant noodles", "pc", 120, 120)),
+            listOf(TruckStockLine(1, "Jasmine rice", "kg", 400, 380), TruckStockLine(2, "Cooking oil 1L", "btl", 12, 12), TruckStockLine(4, "Instant noodles", "pc", 120, 120), TruckStockLine(3, "Sugar 1kg", "pack", -2, -2)),
         ),
     )
 

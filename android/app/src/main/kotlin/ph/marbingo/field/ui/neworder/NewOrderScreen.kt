@@ -256,10 +256,20 @@ private fun ItemRow(item: Item, inCart: Int, truck: Boolean, onClick: () -> Unit
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(Fmt.retail(item), style = MbType.mono.copy(fontSize = 16.sp))
-                Text(if (truck) "${item.qtyOnHand} on truck" else "≈ ${item.qtyOnHand} on hand", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                val out = truck && item.qtyOnHand <= 0
+                when {
+                    out && item.qtyOnHand < 0 -> Text("Short ${-item.qtyOnHand} — tell the office", style = MaterialTheme.typography.bodySmall, color = Mb.Danger)
+                    out -> Text("Out on truck", style = MaterialTheme.typography.bodySmall, color = Mb.Danger)
+                    truck -> Text("${item.qtyOnHand} on truck", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                    else -> Text("≈ ${item.qtyOnHand} on hand", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                }
             }
             Spacer(Modifier.width(10.dp))
-            if (inCart > 0) Chip("× $inCart", Tone.Good) else Icon(Icons.Filled.AddCircleOutline, contentDescription = "Add ${item.name}", tint = Mb.Accent)
+            when {
+                inCart > 0 -> Chip("× $inCart", Tone.Good)
+                truck && item.qtyOnHand <= 0 -> Icon(Icons.Filled.AddCircleOutline, contentDescription = "${item.name} is out", tint = Mb.Line)
+                else -> Icon(Icons.Filled.AddCircleOutline, contentDescription = "Add ${item.name}", tint = Mb.Accent)
+            }
         }
     }
 }

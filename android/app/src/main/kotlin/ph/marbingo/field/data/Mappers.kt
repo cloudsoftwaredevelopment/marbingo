@@ -102,6 +102,7 @@ internal fun TruckSaleWithLines.toOrder() = Order(
     deliveredAt = sale.soldAt,
     cancelledReason = null,
     isSale = true,
+    oversold = sale.oversold,
 )
 
 const val WALK_IN = "Walk-in customer"
