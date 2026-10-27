@@ -146,3 +146,64 @@ data class TrackingMetaEntity(
     val lastUploadAt: Long? = null,
     val lastError: String? = null,
 )
+
+/** Single row (id = 1): the truck this agent drives, replaced wholesale on every pull; absent for booking agents. */
+@Entity(tableName = "truck_meta")
+data class TruckMetaEntity(
+    @PrimaryKey val id: Int = 1,
+    val truckId: Int,
+    val name: String,
+    val plate: String?,
+    val driverName: String?,
+    val periodId: Int?,
+    val periodMonth: String?,
+    /** draft | open | counting; null when the truck has no current period. */
+    val periodStatus: String?,
+)
+
+/** The server's truck stock as of the last pull (replaced wholesale, never edited locally). May be negative. */
+@Entity(tableName = "truck_stock")
+data class TruckStockEntity(@PrimaryKey val itemId: Int, val qty: Int)
+
+/** A sale made from the truck. syncState is SyncState.name. customerClientUuid is null for a walk-in. */
+@Entity(tableName = "truck_sales", indices = [Index("syncState"), Index("soldAt")])
+data class TruckSaleEntity(
+    @PrimaryKey val clientUuid: String,
+    val serverId: Int?,
+    val customerClientUuid: String?,
+    val storeName: String?,
+    val syncState: String,
+    val syncError: String?,
+    val attempts: Int,
+    val soldAt: Long,
+    val total: Long,
+    val oversold: Boolean,
+    val late: Boolean,
+    val agentName: String?,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "truck_sale_lines",
+    foreignKeys = [ForeignKey(TruckSaleEntity::class, ["clientUuid"], ["saleClientUuid"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("saleClientUuid")],
+)
+data class TruckSaleLineEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val saleClientUuid: String,
+    val itemId: Int,
+    val name: String,
+    val unit: String?,
+    val qty: Int,
+    val unitPrice: Long,
+    val lineTotal: Long,
+    val breakdown: String? = null,
+)
+
+data class TruckSaleWithLines(
+    @Embedded val sale: TruckSaleEntity,
+    @Relation(parentColumn = "clientUuid", entityColumn = "saleClientUuid") val lines: List<TruckSaleLineEntity>,
+)
+
+/** Server stock vs. what is still available after the queued (unsynced) sales on this tablet. */
+data class TruckStockRow(val itemId: Int, val name: String, val unit: String?, val qty: Int, val available: Int)

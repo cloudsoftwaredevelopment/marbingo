@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,7 +50,10 @@ fun NewOrderScreen(vm: NewOrderViewModel, nav: NavController, entry: NavBackStac
     LaunchedEffect(storeUuid) { vm.start(storeUuid) }
     LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(s.savedUuid) {
-        s.savedUuid?.let { id -> nav.navigate(Routes.receipt(id)) { popUpTo(Routes.NEW_ORDER) { inclusive = true } } }
+        s.savedUuid?.let { id ->
+            if (s.isTruck) nav.navigate(Routes.saleReceipt(id)) { popUpTo(Routes.TRUCK_SALE) { inclusive = true } }
+            else nav.navigate(Routes.receipt(id)) { popUpTo(Routes.NEW_ORDER) { inclusive = true } }
+        }
     }
     // Barcode from the scanner screen comes back through the saved state handle.
     LaunchedEffect(entry) {
@@ -64,28 +68,28 @@ fun NewOrderScreen(vm: NewOrderViewModel, nav: NavController, entry: NavBackStac
     fun leave() { if (s.dirty) confirmLeave = true else nav.popBackStack() }
     fun back() = when (s.step) {
         OrderStep.REVIEW -> vm.goTo(OrderStep.ITEMS)
-        OrderStep.ITEMS -> vm.goTo(OrderStep.STORE)
-        OrderStep.STORE -> leave()
+        OrderStep.ITEMS -> if (s.isTruck) leave() else vm.goTo(OrderStep.STORE)
+        OrderStep.STORE -> if (s.isTruck) vm.goTo(OrderStep.ITEMS) else leave()
     }
     BackHandler(enabled = !s.saving) { back() }
 
     DetailScaffold(
-        title = "New order",
+        title = if (s.isTruck) "Sell from truck" else "New order",
         onBack = { if (!s.saving) back() },
         maxWidth = if (s.step == OrderStep.ITEMS) 1100 else MAX_CONTENT_DP,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             when (s.step) {
-                OrderStep.ITEMS -> OrderFooter(s, "Review order", enabled = s.cart.isNotEmpty(), onClick = vm::review)
-                OrderStep.REVIEW -> OrderFooter(s, "Save order", enabled = !s.saving, loading = s.saving, onClick = vm::save)
+                OrderStep.ITEMS -> OrderFooter(s, if (s.isTruck) "Review sale" else "Review order", enabled = s.cart.isNotEmpty(), onClick = vm::review)
+                OrderStep.REVIEW -> OrderFooter(s, if (s.isTruck) "Complete sale" else "Save order", enabled = !s.saving, loading = s.saving, onClick = vm::save)
                 OrderStep.STORE -> {}
             }
         },
     ) {
         Column(Modifier.fillMaxSize()) {
-            StepBar(s.step, s.store)
+            StepBar(s.step, s.store, s.isTruck, onStore = { vm.goTo(OrderStep.STORE) })
             when (s.step) {
-                OrderStep.STORE -> StoreStep(storeQuery, stores, vm::setStoreQuery, vm::selectStore, vm::openAddStore)
+                OrderStep.STORE -> StoreStep(storeQuery, stores, vm::setStoreQuery, vm::selectStore, vm::openAddStore, onWalkIn = if (s.isTruck) vm::walkIn else null)
                 OrderStep.ITEMS -> ItemsStep(
                     s, itemQuery, items, wide,
                     onQuery = vm::setItemQuery,
@@ -107,7 +111,7 @@ fun NewOrderScreen(vm: NewOrderViewModel, nav: NavController, entry: NavBackStac
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
             containerColor = Mb.Surface,
-            title = { Text("Discard this order?") },
+            title = { Text(if (s.isTruck) "Discard this sale?" else "Discard this order?") },
             text = { Text("The items you added haven't been saved.") },
             confirmButton = {
                 TextButton(onClick = { confirmLeave = false; nav.popBackStack() }, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -120,8 +124,8 @@ fun NewOrderScreen(vm: NewOrderViewModel, nav: NavController, entry: NavBackStac
 }
 
 @Composable
-private fun StepBar(step: OrderStep, store: Store?) {
-    val labels = listOf("1  Store", "2  Items", "3  Review")
+private fun StepBar(step: OrderStep, store: Store?, truck: Boolean, onStore: () -> Unit) {
+    val labels = listOf(if (truck) "1  Customer" else "1  Store", "2  Items", "3  Review")
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         labels.forEachIndexed { i, l ->
             val active = i == step.ordinal
@@ -131,12 +135,13 @@ private fun StepBar(step: OrderStep, store: Store?) {
                 contentColor = if (active) Mb.Surface else Mb.Muted,
             ) { Text(l, Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium) }
         }
-        if (store != null && step != OrderStep.STORE) {
+        if ((store != null || truck) && step != OrderStep.STORE) {
             Spacer(Modifier.weight(1f))
             Text(
-                store.name, style = MaterialTheme.typography.labelMedium, color = Mb.Muted,
+                store?.name ?: WALK_IN, style = MaterialTheme.typography.labelMedium, color = Mb.Muted,
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.CenterVertically).widthIn(max = 200.dp),
+                modifier = Modifier.align(Alignment.CenterVertically).widthIn(max = 200.dp)
+                    .then(if (truck && step == OrderStep.ITEMS) Modifier.clickable(onClick = onStore) else Modifier),
             )
         }
     }
@@ -145,9 +150,12 @@ private fun StepBar(step: OrderStep, store: Store?) {
 @Composable
 private fun StoreStep(
     query: String, stores: List<Store>,
-    onQuery: (String) -> Unit, onPick: (Store) -> Unit, onAdd: () -> Unit,
+    onQuery: (String) -> Unit, onPick: (Store) -> Unit, onAdd: () -> Unit, onWalkIn: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
+        if (onWalkIn != null) {
+            PrimaryButton("Walk-in customer (no store)", onWalkIn, Modifier.fillMaxWidth().padding(16.dp, 4.dp, 16.dp, 12.dp))
+        }
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MbField(
                 query, onQuery, "Search stores", modifier = Modifier.weight(1f),
@@ -219,7 +227,7 @@ private fun SearchPane(
         ) {
             if (results.isEmpty()) item { EmptyState("No items found") }
             items(results, key = { it.id }) { item ->
-                ItemRow(item, inCart = s.cart.firstOrNull { it.item.id == item.id }?.qty ?: 0, onClick = { onAdd(item) })
+                ItemRow(item, inCart = s.cart.firstOrNull { it.item.id == item.id }?.qty ?: 0, truck = s.isTruck, onClick = { onAdd(item) })
             }
         }
     }
@@ -227,7 +235,7 @@ private fun SearchPane(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ItemRow(item: Item, inCart: Int, onClick: () -> Unit) {
+private fun ItemRow(item: Item, inCart: Int, truck: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -248,7 +256,7 @@ private fun ItemRow(item: Item, inCart: Int, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(Fmt.retail(item), style = MbType.mono.copy(fontSize = 16.sp))
-                Text("≈ ${item.qtyOnHand} on hand", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                Text(if (truck) "${item.qtyOnHand} on truck" else "≈ ${item.qtyOnHand} on hand", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
             }
             Spacer(Modifier.width(10.dp))
             if (inCart > 0) Chip("× $inCart", Tone.Good) else Icon(Icons.Filled.AddCircleOutline, contentDescription = "Add ${item.name}", tint = Mb.Accent)
@@ -288,7 +296,7 @@ private fun CartPane(
                 line.upsell?.let { up -> UpsellHint(line, up) { onUpsell(line.item.id) } }
             }
         }
-        item {
+        if (!s.isTruck) item {
             MbField(
                 s.notes, onNotes, "Notes (optional)", singleLine = false, minLines = 2,
                 modifier = Modifier.padding(top = 4.dp),
@@ -369,8 +377,8 @@ private fun ReviewStep(s: NewOrderState, onEditItems: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             MbCard(Modifier.fillMaxWidth()) {
-                Text("Store", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
-                Text(s.store?.name.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                Text(if (s.isTruck) "Customer" else "Store", style = MaterialTheme.typography.bodySmall, color = Mb.Muted)
+                Text(s.store?.name ?: if (s.isTruck) WALK_IN else "", style = MaterialTheme.typography.titleMedium)
                 s.store?.address?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Mb.Muted) }
             }
         }
@@ -404,7 +412,8 @@ private fun ReviewStep(s: NewOrderState, onEditItems: () -> Unit) {
         }
         item {
             Text(
-                "Saved on this tablet first, then sent to the shop when you're online. Nothing is delivered until the shop confirms.",
+                if (s.isTruck) "Paid on the spot. Saved on this tablet first, then sent to the shop when you're online; the truck stock is reduced by the amount sold."
+                else "Saved on this tablet first, then sent to the shop when you're online. Nothing is delivered until the shop confirms.",
                 style = MaterialTheme.typography.bodySmall, color = Mb.Muted,
             )
         }

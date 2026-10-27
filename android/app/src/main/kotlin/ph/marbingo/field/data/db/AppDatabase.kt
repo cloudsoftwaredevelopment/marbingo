@@ -10,13 +10,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * The DB holds queued orders, so destructive migration is never allowed: every schema change
  * ships a real Migration (see [MIGRATION_1_2], [MIGRATION_2_3]). Version 2 adds store locations and the GPS outbox;
- * version 3 adds pack pricing.
+ * version 3 adds pack pricing; version 4 adds the truck tables.
  */
 @Database(
     entities = [ItemEntity::class, CustomerEntity::class, OrderEntity::class, OrderLineEntity::class, SyncMetaEntity::class,
         LocationPointEntity::class, TrackingMetaEntity::class, ItemPackEntity::class,
+        TruckMetaEntity::class, TruckStockEntity::class, TruckSaleEntity::class, TruckSaleLineEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,11 +27,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncMeta(): SyncMetaDao
     abstract fun locationPoints(): LocationPointDao
     abstract fun trackingMeta(): TrackingMetaDao
+    abstract fun truck(): TruckDao
 
     companion object {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "marbingo_field.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }
@@ -84,5 +86,30 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("ALTER TABLE `items_new` RENAME TO `items`")
         // Cached items have no packs yet: force the next pull to be a full one.
         db.execSQL("UPDATE `sync_meta` SET `since` = NULL")
+    }
+}
+
+/** v3 -> v4 (trucks): four new tables only (truck_meta, truck_stock, truck_sales, truck_sale_lines). Nothing existing is touched. */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `truck_meta` (`id` INTEGER NOT NULL, `truckId` INTEGER NOT NULL, `name` TEXT NOT NULL, `plate` TEXT, " +
+                "`driverName` TEXT, `periodId` INTEGER, `periodMonth` TEXT, `periodStatus` TEXT, PRIMARY KEY(`id`))"
+        )
+        db.execSQL("CREATE TABLE IF NOT EXISTS `truck_stock` (`itemId` INTEGER NOT NULL, `qty` INTEGER NOT NULL, PRIMARY KEY(`itemId`))")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `truck_sales` (`clientUuid` TEXT NOT NULL, `serverId` INTEGER, `customerClientUuid` TEXT, `storeName` TEXT, " +
+                "`syncState` TEXT NOT NULL, `syncError` TEXT, `attempts` INTEGER NOT NULL, `soldAt` INTEGER NOT NULL, `total` INTEGER NOT NULL, " +
+                "`oversold` INTEGER NOT NULL, `late` INTEGER NOT NULL, `agentName` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`clientUuid`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_truck_sales_syncState` ON `truck_sales` (`syncState`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_truck_sales_soldAt` ON `truck_sales` (`soldAt`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `truck_sale_lines` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `saleClientUuid` TEXT NOT NULL, " +
+                "`itemId` INTEGER NOT NULL, `name` TEXT NOT NULL, `unit` TEXT, `qty` INTEGER NOT NULL, `unitPrice` INTEGER NOT NULL, " +
+                "`lineTotal` INTEGER NOT NULL, `breakdown` TEXT, FOREIGN KEY(`saleClientUuid`) REFERENCES `truck_sales`(`clientUuid`) " +
+                "ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_truck_sale_lines_saleClientUuid` ON `truck_sale_lines` (`saleClientUuid`)")
     }
 }

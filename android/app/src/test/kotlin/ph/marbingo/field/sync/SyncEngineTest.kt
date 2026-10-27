@@ -46,6 +46,9 @@ class SyncEngineTest {
     private val batchCalls = AtomicInteger()
     private val ordersByUuid = mutableMapOf<String, Int>() // fake server state: clientUuid -> id
     private val cancelReasons = mutableMapOf<String, String>() // cancelReason sent per order clientUuid
+    private val truckSalesByUuid = mutableMapOf<String, Int>()
+    private val truckBatches = mutableListOf<String>()
+    private lateinit var truck: TruckRepositoryImpl
     @Volatile private var batchMode = "ok" // ok | offline | itemError
     @Volatile private var pullBody = pullJson("T1", emptyList(), emptyList())
 
@@ -69,6 +72,14 @@ class SyncEngineTest {
                             else -> MockResponse().setBody(batchResponse(request.body.readUtf8()))
                         }
                     }
+                    path == "/api/truck-sales/batch" -> {
+                        val body = request.body.readUtf8()
+                        truckBatches += body
+                        when (batchMode) {
+                            "offline" -> MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START)
+                            else -> MockResponse().setBody(truckBatchResponse(body))
+                        }
+                    }
                     else -> MockResponse().setResponseCode(404)
                 }
             }
@@ -77,6 +88,7 @@ class SyncEngineTest {
         engine = SyncEngine(api, db, tokens)
         orders = OrderRepositoryImpl(db, api, tokens, trigger)
         stores = StoreRepositoryImpl(db.customers(), trigger)
+        truck = TruckRepositoryImpl(db, tokens, trigger)
         runBlocking { db.items().upsertAll(listOf(itemDto(1, 5600).let { ph.marbingo.field.data.db.ItemEntity(1, "Rice", "480", "pc", null, null, 5600, 10, null, "x") })) }
     }
 
@@ -117,6 +129,42 @@ class SyncEngineTest {
             }
         }
         return """{"customers":[$custOut],"results":[$results]}"""
+    }
+
+    /** Minimal fake of /truck-sales/batch: idempotent on clientUuid, rejects itemId 99, flags oversold when qty > 100. */
+    private fun truckBatchResponse(body: String): String {
+        val j = org.json.JSONObject(body)
+        val custs = j.getJSONArray("customers")
+        val custOut = (0 until custs.length()).joinToString(",") {
+            """{"clientUuid":"${custs.getJSONObject(it).getString("clientUuid")}","id":${200 + it}}"""
+        }
+        val ss = j.getJSONArray("sales")
+        val results = (0 until ss.length()).joinToString(",") {
+            val sale = ss.getJSONObject(it)
+            val uuid = sale.getString("clientUuid")
+            val ls = sale.getJSONArray("lines")
+            if ((0 until ls.length()).any { i -> ls.getJSONObject(i).getInt("itemId") == 99 }) {
+                """{"clientUuid":"$uuid","ok":false,"error":"Unknown item 99."}"""
+            } else {
+                val id = truckSalesByUuid.getOrPut(uuid) { 900 + truckSalesByUuid.size }
+                val lines = (0 until ls.length()).joinToString(",") { i ->
+                    val l = ls.getJSONObject(i); val q = l.getInt("qty")
+                    """{"itemId":${l.getInt("itemId")},"qty":$q,"unitPrice":5000,"lineTotal":${q * 5000},"breakdown":[{"packTypeId":null,"name":null,"size":1,"count":$q,"price":5000,"amount":${q * 5000}}]}"""
+                }
+                val total = (0 until ls.length()).sumOf { i -> ls.getJSONObject(i).getInt("qty") * 5000 }
+                """{"clientUuid":"$uuid","ok":true,"sale":{"id":$id,"clientUuid":"$uuid","truckId":2,"periodId":2,"soldAt":"2026-10-27T05:00:00.000Z","customerId":null,"total":$total,"oversold":false,"late":true,"lines":[$lines]}}"""
+            }
+        }
+        return """{"customers":[$custOut],"results":[$results]}"""
+    }
+
+    private fun truckPull(stock: String, period: String? = """{"id":2,"month":"2026-10","status":"open"}""") =
+        pullJson("T2", emptyList(), emptyList()).dropLast(1) +
+            ""","truck":{"id":2,"name":"Truck 2","plate":"ABC 123","driverName":"Lito","period":${period ?: "null"},"stock":[$stock]}}"""
+
+    private suspend fun seedTruck(qty: Int = 10) {
+        pullBody = truckPull("""{"itemId":1,"qty":$qty}""")
+        assertTrue(engine.run() is SyncEngine.Outcome.Success)
     }
 
     private suspend fun newStoreAndOrder(itemId: Int = 1): Pair<String, String> {
@@ -299,5 +347,110 @@ class SyncEngineTest {
         assertEquals(listOf("Sack", null), line.breakdown!!.map { it.name })
         assertEquals(listOf(1, 3), line.breakdown!!.map { it.count })
         assertNull(line.deliveredBreakdown)
+    }
+
+    // ---- truck sales ----
+
+    @Test fun pullReplacesTruckMetaAndStockAndNullClearsIt() = runBlocking {
+        seedTruck(10)
+        assertEquals("Truck 2", db.truck().meta()!!.name)
+        assertEquals("open", db.truck().meta()!!.periodStatus)
+        assertEquals(10, db.truck().stockFor(1)!!.available)
+        // The next pull replaces (not merges) the stock: item 1 disappears, item 3 arrives; period goes to counting.
+        pullBody = truckPull("""{"itemId":3,"qty":-2}""", """{"id":2,"month":"2026-10","status":"counting"}""")
+        engine.run()
+        assertNull(db.truck().stockFor(1)); assertEquals(-2, db.truck().stockFor(3)!!.qty)
+        assertEquals("counting", db.truck().meta()!!.periodStatus)
+        // No truck block (older server / unassigned): everything is cleared.
+        pullBody = pullJson("T3", emptyList(), emptyList())
+        engine.run()
+        assertNull(db.truck().meta()); assertNull(db.truck().stockFor(3))
+        assertNull(truck.observeTruck().first())
+    }
+
+    @Test fun truckSaleQueuesAvailableArithmeticAndSyncs() = runBlocking {
+        seedTruck(10)
+        val item = db.items().byId(1)!!.toModel()
+        val id = truck.placeSale(null, listOf(CartLine(item, 4)))
+        assertEquals(1, trigger.syncs)
+        val queued = truck.observe(id).first()!!
+        assertTrue(queued.isSale); assertEquals(SyncState.QUEUED, queued.syncState); assertEquals(22400L, queued.total)
+        // Never mutates truck_stock: server qty stays 10, available drops to 6.
+        assertEquals(10, db.truck().stockFor(1)!!.qty); assertEquals(6, db.truck().stockFor(1)!!.available)
+        assertEquals(6, truck.observeAvailable().first()[1]); assertEquals(6, truck.observeTruck().first()!!.unitsOnBoard)
+        // Can't sell more than what is left.
+        try { truck.placeSale(null, listOf(CartLine(item, 7))); fail() } catch (e: UserFacingException) { assertTrue(e.message!!.contains("6")) }
+
+        // Offline: stays queued, nothing lost.
+        batchMode = "offline"
+        assertTrue(engine.run() is SyncEngine.Outcome.Retry)
+        assertEquals(SyncState.QUEUED, truck.observe(id).first()!!.syncState)
+        assertEquals(6, db.truck().stockFor(1)!!.available)
+
+        // Online: pushed, server price/flags win, and the pull (stock now 6 on the server) leaves available at 6, not 2.
+        batchMode = "ok"
+        pullBody = truckPull("""{"itemId":1,"qty":6}""")
+        assertTrue(engine.run() is SyncEngine.Outcome.Success)
+        val synced = truck.observe(id).first()!!
+        assertEquals(SyncState.SYNCED, synced.syncState); assertTrue(synced.reference.startsWith("S#"))
+        assertEquals(20000L, synced.total) // server price 5000 x 4
+        assertEquals("Rice", synced.lines.single().name)
+        assertEquals(6, db.truck().stockFor(1)!!.available)
+        assertEquals(0, db.truck().waitingCountNow())
+    }
+
+    @Test fun truckSaleReplayIsIdempotentAndErrorsAreRecorded() = runBlocking {
+        seedTruck(10)
+        val item = db.items().byId(1)!!.toModel()
+        val id = truck.placeSale(null, listOf(CartLine(item, 1)))
+        engine.run()
+        val serverId = truck.observe(id).first()!!.serverId
+        // Simulate a lost reply: put the same sale back to QUEUED and push again; the server returns the same row.
+        db.truck().upsert(db.truck().get(id)!!.copy(syncState = SyncState.QUEUED.name, serverId = null))
+        engine.run()
+        assertEquals(serverId, truck.observe(id).first()!!.serverId)
+        assertEquals(1, truckSalesByUuid.size)
+
+        // A sale the server rejects is marked ERROR (and still counts against available until fixed).
+        val bad = db.items().byId(1)!!.toModel().copy(id = 99)
+        db.items().upsertAll(listOf(ph.marbingo.field.data.db.ItemEntity(99, "Ghost", null, "pc", null, null, 100, 0, null, "x")))
+        db.truck().insertStock(listOf(ph.marbingo.field.data.db.TruckStockEntity(99, 5)))
+        val badId = truck.placeSale(null, listOf(CartLine(bad, 1)))
+        engine.run()
+        val e = truck.observe(badId).first()!!
+        assertEquals(SyncState.ERROR, e.syncState); assertEquals("Unknown item 99.", e.syncError)
+    }
+
+    @Test fun truckSaleToNewStoreSendsTheStoreInTheSameBatchAndWalkInSendsNone() = runBlocking {
+        seedTruck(10)
+        val item = db.items().byId(1)!!.toModel()
+        val storeUuid = stores.create("Aling Rosa", null, null, "Brgy. Daro", null)
+        val walkIn = truck.placeSale(null, listOf(CartLine(item, 1)))
+        val named = truck.placeSale(storeUuid, listOf(CartLine(item, 2)))
+        assertEquals("Aling Rosa", truck.observe(named).first()!!.storeName)
+        engine.run()
+        val body = org.json.JSONObject(truckBatches.last())
+        val sales = body.getJSONArray("sales")
+        val byUuid = (0 until sales.length()).associate { sales.getJSONObject(it).getString("clientUuid") to sales.getJSONObject(it) }
+        assertFalse(byUuid.getValue(walkIn).has("customerClientUuid")); assertFalse(byUuid.getValue(walkIn).has("customerId"))
+        // The order push (no orders) already carried the new store, so the sale references it by server id.
+        val n = byUuid.getValue(named)
+        assertTrue(n.has("customerId") || n.has("customerClientUuid"))
+        assertEquals(SyncState.SYNCED, truck.observe(walkIn).first()!!.syncState)
+        assertEquals(SyncState.SYNCED, truck.observe(named).first()!!.syncState)
+        assertFalse(db.customers().get(storeUuid)!!.dirty)
+    }
+
+    @Test fun placeSaleBlockedUntilThePeriodIsOpenAndSignOutCountsTruckSales() = runBlocking {
+        pullBody = truckPull("""{"itemId":1,"qty":10}""", """{"id":2,"month":"2026-10","status":"draft"}""")
+        engine.run()
+        val item = db.items().byId(1)!!.toModel()
+        try { truck.placeSale(null, listOf(CartLine(item, 1))); fail() } catch (e: UserFacingException) { assertTrue(e.message!!.contains("approval")) }
+        assertTrue(truck.observeTruck().first()!!.waitingForApproval)
+
+        seedTruck(10)
+        truck.placeSale(null, listOf(CartLine(item, 1)))
+        val auth = AuthRepositoryImpl(ApiClient.create(server.url("/").toString(), tokens), PrefsTokenStore(ApplicationProvider.getApplicationContext()), db, engine, trigger)
+        assertFalse(auth.signOut(false)) // a truck sale is still unsynced
     }
 }

@@ -23,21 +23,25 @@ import ph.marbingo.field.ui.theme.Mb
 import ph.marbingo.field.ui.theme.MbType
 
 enum class OrderFilter(val label: String) {
-    ALL("All"), WAITING("Waiting to sync"), PENDING("Pending"), DELIVERED("Delivered"), CANCELLED("Cancelled");
+    ALL("All"), WAITING("Waiting to sync"), PENDING("Pending"), DELIVERED("Delivered"), CANCELLED("Cancelled"), TRUCK("Truck sales");
 
     fun matches(o: Order) = when (this) {
         ALL -> true
         WAITING -> o.syncState != SyncState.SYNCED
-        PENDING -> o.status == OrderStatus.PENDING
-        DELIVERED -> o.status == OrderStatus.DELIVERED
+        PENDING -> !o.isSale && o.status == OrderStatus.PENDING
+        DELIVERED -> !o.isSale && o.status == OrderStatus.DELIVERED
         CANCELLED -> o.status == OrderStatus.CANCELLED
+        TRUCK -> o.isSale
     }
 }
 
 class OrdersViewModel(deps: UiDeps) : ViewModel() {
     private val _filter = MutableStateFlow(OrderFilter.ALL)
     val filter: StateFlow<OrderFilter> = _filter.asStateFlow()
-    private val all = deps.orders.recent(200)
+    /** Truck sales are mixed in only for truck agents (booking agents have none), under the "Truck sales" chip. */
+    val hasTruck: StateFlow<Boolean> = deps.truck.observeTruck().map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    private val all = combine(deps.orders.recent(200), deps.truck.recent(200)) { o, t -> o + t }
     val orders: StateFlow<List<Order>> = combine(all, _filter) { l, f -> l.filter(f::matches).sortedByDescending { it.orderedAt } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     fun setFilter(f: OrderFilter) { _filter.value = f }
@@ -47,13 +51,14 @@ class OrdersViewModel(deps: UiDeps) : ViewModel() {
 fun OrdersScreen(vm: OrdersViewModel, nav: NavController) {
     val filter by vm.filter.collectAsState()
     val orders by vm.orders.collectAsState()
+    val hasTruck by vm.hasTruck.collectAsState()
     MainScaffold(nav, Routes.ORDERS, "Orders") {
         Column(Modifier.fillMaxSize()) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(OrderFilter.entries) { f ->
+                items(OrderFilter.entries.filter { it != OrderFilter.TRUCK || hasTruck }) { f ->
                     FilterChip(
                         selected = f == filter,
                         onClick = { vm.setFilter(f) },
@@ -72,7 +77,7 @@ fun OrdersScreen(vm: OrdersViewModel, nav: NavController) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (orders.isEmpty()) item { EmptyState("No orders here", "Orders you take show up in this list.") }
-                items(orders, key = { it.clientUuid }) { o -> OrderRow(o, onClick = { nav.navigate(Routes.order(o.clientUuid)) }) }
+                items(orders, key = { it.clientUuid }) { o -> OrderRow(o, onClick = { nav.navigate(if (o.isSale) Routes.saleReceipt(o.clientUuid) else Routes.order(o.clientUuid)) }) }
             }
         }
     }

@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 import ph.marbingo.field.data.db.*
 
 /**
- * Room schema 1 -> 2 -> 3 and 2 -> 3 with queued work on the device. A v1 database is built by hand with the exact SQL Room
+ * Room schema 1 -> 2 -> 3 -> 4, 2 -> 3 and 3 -> 4 with queued work on the device. A v1 database is built by hand with the exact SQL Room
  * generated for version 1 (exportSchema is off, so MigrationTestHelper has no JSON to read), filled, then opened by Room with MIGRATION_1_2.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -43,7 +43,7 @@ class MigrationTest {
 
     private fun open(): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, name)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .allowMainThreadQueries()
             .build().also { db = it }
 
@@ -101,7 +101,7 @@ class MigrationTest {
             columns("location_points"),
         )
         assertTrue(columns("tracking_meta").containsAll(listOf("scheduleDays", "consentAt", "consentSynced", "lastFixAt", "lastUploadAt")))
-        assertEquals(3, sql.version)
+        assertEquals(4, sql.version)
     }
 
     private fun createV2() {
@@ -125,7 +125,7 @@ class MigrationTest {
         createV2()
         val d = open()
         val sql = d.openHelper.writableDatabase
-        assertEquals(3, sql.version)
+        assertEquals(4, sql.version)
 
         // Queued and synced orders with their lines are untouched; breakdown columns start null.
         val queued = d.orders().pendingForPush().single()
@@ -162,6 +162,71 @@ class MigrationTest {
         assertEquals(parts, d.orders().pendingForPush().single().lines.single().breakdown)
     }
 
+    private fun createV3() {
+        val file = ctx.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        val raw = SQLiteDatabase.openOrCreateDatabase(file, null)
+        V3_SCHEMA.forEach { raw.execSQL(it) }
+        raw.execSQL("INSERT INTO items VALUES (1,'Rice 5kg','4800001','bag',NULL,'Grains',27000,40,NULL,'2026-10-01')")
+        raw.execSQL("INSERT INTO item_packs VALUES (1,5,'Sack',50,290000)")
+        raw.execSQL("INSERT INTO customers VALUES ('c-queued',NULL,'Queued Store','Owner',NULL,'Mabini St','note',1,1,2000,10.5,122.5,9.0,'device')")
+        raw.execSQL("INSERT INTO customers VALUES ('c-synced',7,'Aling Nena',NULL,'0917',NULL,NULL,1,0,1000,NULL,NULL,NULL,NULL)")
+        raw.execSQL("INSERT INTO orders VALUES ('o-1',NULL,'c-queued','Queued Store','PENDING','QUEUED',NULL,0,3000,50000,'hello',NULL,NULL,'Ramon',3000)")
+        raw.execSQL("INSERT INTO order_lines VALUES (1,'o-1',1,'Rice 5kg','bag',2,25000,50000,NULL,'[]',NULL)")
+        raw.execSQL("INSERT INTO sync_meta VALUES (1,'2026-10-25T00:00:00Z',5000,NULL)")
+        raw.version = 3
+        raw.close()
+    }
+
+    @Test fun v3ToV4KeepsQueuedOrdersAndStoresAndAddsTruckTables() = runBlocking {
+        createV3()
+        val d = open()
+        val sql = d.openHelper.writableDatabase
+        assertEquals(4, sql.version)
+
+        // Nothing existing is touched (a destructive migration would have wiped these).
+        val order = d.orders().pendingForPush().single()
+        assertEquals("o-1", order.order.clientUuid); assertEquals(50000L, order.order.total); assertEquals("hello", order.order.notes)
+        assertEquals(2, order.lines.single().qty); assertEquals("[]", order.lines.single().breakdown)
+        assertEquals("Queued Store", d.customers().get("c-queued")!!.name); assertTrue(d.customers().get("c-queued")!!.dirty)
+        assertEquals(7, d.customers().get("c-synced")!!.serverId)
+        assertEquals("Sack", d.items().byId(1)!!.packs.single().name)
+        assertEquals("2026-10-25T00:00:00Z", d.syncMeta().get()!!.since) // v4 does not force a re-pull
+
+        fun columns(table: String): Set<String> = sql.query("PRAGMA table_info($table)").use { c ->
+            buildSet { while (c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name"))) }
+        }
+        assertEquals(setOf("id", "truckId", "name", "plate", "driverName", "periodId", "periodMonth", "periodStatus"), columns("truck_meta"))
+        assertEquals(setOf("itemId", "qty"), columns("truck_stock"))
+        assertEquals(
+            setOf("clientUuid", "serverId", "customerClientUuid", "storeName", "syncState", "syncError", "attempts", "soldAt", "total", "oversold", "late", "agentName", "updatedAt"),
+            columns("truck_sales"),
+        )
+        assertEquals(setOf("id", "saleClientUuid", "itemId", "name", "unit", "qty", "unitPrice", "lineTotal", "breakdown"), columns("truck_sale_lines"))
+
+        // New tables work, and available = stock - lines of unsynced sales.
+        d.truck().replaceTruck(TruckMetaEntity(1, 2, "Truck 2", "NEG 1", "Pedro", 9, "2026-10", "open"), listOf(TruckStockEntity(1, 10)))
+        d.truck().replace(
+            TruckSaleEntity("t-1", null, null, null, "QUEUED", null, 0, 5000, 12400, false, false, "Ramon", 5000),
+            listOf(TruckSaleLineEntity(saleClientUuid = "t-1", itemId = 1, name = "Rice 5kg", unit = "bag", qty = 4, unitPrice = 6200, lineTotal = 24800)),
+        )
+        assertEquals(6, d.truck().stockFor(1)!!.available)
+        assertEquals(1, d.truck().waitingCountNow())
+    }
+
+    @Test fun freshV4HasTheSameTruckShapeAsTheMigration() = runBlocking {
+        // Room validates the migrated schema against the entities when opening, so a mismatch would throw above;
+        // here check a fresh install exposes the same tables.
+        val fresh = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java).allowMainThreadQueries().build().also { db = it }
+        val sql = fresh.openHelper.writableDatabase
+        fun columns(table: String): Set<String> = sql.query("PRAGMA table_info($table)").use { c ->
+            buildSet { while (c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name"))) }
+        }
+        assertEquals(setOf("itemId", "qty"), columns("truck_stock"))
+        assertEquals(9, columns("truck_sale_lines").size)
+        assertEquals(13, columns("truck_sales").size)
+        assertEquals(8, columns("truck_meta").size)
+    }
+
     @Test fun freshInstallAtV2HasSameShape() = runBlocking {
         val d = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java).allowMainThreadQueries().build().also { db = it }
         d.customers().upsert(CustomerEntity("x", null, "X", null, null, null, null, true, true, 1, lat = 1.0, lng = 2.0, locationSource = "device"))
@@ -182,6 +247,20 @@ class MigrationTest {
             "CREATE INDEX IF NOT EXISTS `index_order_lines_orderClientUuid` ON `order_lines` (`orderClientUuid`)",
             "CREATE TABLE IF NOT EXISTS `sync_meta` (`id` INTEGER NOT NULL, `since` TEXT, `lastSyncedAt` INTEGER, `lastError` TEXT, PRIMARY KEY(`id`))",
         )
+
+        /** Schema version 3: v2 with the items rebuilt, item_packs and the breakdown columns. */
+        val V3_SCHEMA by lazy { V2_SCHEMA.map {
+            when {
+                it.startsWith("CREATE TABLE IF NOT EXISTS `items`") ->
+                    "CREATE TABLE IF NOT EXISTS `items` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `sku` TEXT, `unit` TEXT NOT NULL, `categoryId` INTEGER, `category` TEXT, `sellingPrice` INTEGER NOT NULL, `qtyOnHand` INTEGER NOT NULL, `imageUrl` TEXT, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                it.startsWith("CREATE TABLE IF NOT EXISTS `order_lines`") ->
+                    "CREATE TABLE IF NOT EXISTS `order_lines` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `orderClientUuid` TEXT NOT NULL, `itemId` INTEGER NOT NULL, `name` TEXT NOT NULL, `unit` TEXT, `qty` INTEGER NOT NULL, `unitPrice` INTEGER NOT NULL, `lineTotal` INTEGER NOT NULL, `deliveredQty` INTEGER, `breakdown` TEXT, `deliveredBreakdown` TEXT, FOREIGN KEY(`orderClientUuid`) REFERENCES `orders`(`clientUuid`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+                else -> it
+            }
+        } + listOf(
+            "CREATE TABLE IF NOT EXISTS `item_packs` (`itemId` INTEGER NOT NULL, `packTypeId` INTEGER NOT NULL, `name` TEXT NOT NULL, `size` INTEGER NOT NULL, `price` INTEGER NOT NULL, PRIMARY KEY(`itemId`, `packTypeId`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_packs_itemId` ON `item_packs` (`itemId`)",
+        ) }
 
         /** Schema version 2: v1 plus store pin columns, the GPS outbox and tracking meta. */
         val V2_SCHEMA = V1_SCHEMA.map {

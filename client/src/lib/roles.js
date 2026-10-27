@@ -6,6 +6,8 @@ export const CAN = {
   orders: ['MANAGER', 'INVENTORY', 'AGENT'],
   orderActions: ['MANAGER', 'INVENTORY'],
   stores: ['MANAGER', 'INVENTORY'],
+  trucks: ['MANAGER', 'INVENTORY'],
+  truckApprove: ['MANAGER'],
   map: ['MANAGER'],
   admin: ['MANAGER']
 };

@@ -16,6 +16,10 @@ object Routes {
     const val ORDER = "order/{uuid}"
     const val RECEIPT = "receipt/{uuid}"
 
+    const val TRUCK_SALE = "trucksale"
+    const val TRUCK_STOCK = "truckstock"
+    const val SALE_RECEIPT = "salereceipt/{uuid}"
+
     const val SCAN_RESULT_KEY = "scanned_code"
 
     fun newOrder(storeUuid: String? = null) = if (storeUuid == null) "neworder" else "neworder?store=${Uri.encode(storeUuid)}"
@@ -23,4 +27,5 @@ object Routes {
     fun store(uuid: String) = "store/${Uri.encode(uuid)}"
     fun order(uuid: String) = "order/${Uri.encode(uuid)}"
     fun receipt(uuid: String) = "receipt/${Uri.encode(uuid)}"
+    fun saleReceipt(uuid: String) = "salereceipt/${Uri.encode(uuid)}"
 }

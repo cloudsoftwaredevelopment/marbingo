@@ -39,8 +39,9 @@ sealed interface ReceiptEvent {
     data class Share(val file: File, val order: Order) : ReceiptEvent
 }
 
-class ReceiptViewModel(private val deps: UiDeps, val uuid: String) : ViewModel() {
-    val order: StateFlow<Order?> = deps.orders.observe(uuid).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+class ReceiptViewModel(private val deps: UiDeps, val uuid: String, private val sale: Boolean = false) : ViewModel() {
+    private fun source(): Flow<Order?> = if (sale) deps.truck.observe(uuid) else deps.orders.observe(uuid)
+    val order: StateFlow<Order?> = source().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val session: StateFlow<Session?> = deps.auth.session.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _busy = MutableStateFlow(false)
@@ -49,7 +50,7 @@ class ReceiptViewModel(private val deps: UiDeps, val uuid: String) : ViewModel()
     val events: SharedFlow<ReceiptEvent> = _events.asSharedFlow()
 
     private suspend fun current(): Pair<Order, Session>? {
-        val o = deps.orders.observe(uuid).first() ?: return null
+        val o = source().first() ?: return null
         val s = deps.auth.session.first() ?: return null
         return o to s
     }
@@ -120,7 +121,7 @@ fun ReceiptScreen(vm: ReceiptViewModel, nav: NavController) {
 
     fun done() { if (!nav.popBackStack(Routes.HOME, false)) nav.navigate(Routes.HOME) }
 
-    DetailScaffold("Order slip", onBack = ::done, maxWidth = 560, snackbarHost = { SnackbarHost(snackbar) }) {
+    DetailScaffold(if (order?.isSale == true) "Sales receipt" else "Order slip", onBack = ::done, maxWidth = 560, snackbarHost = { SnackbarHost(snackbar) }) {
         val o = order
         if (o == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Mb.Accent) }
@@ -170,11 +171,11 @@ fun Slip(o: Order, session: Session?) {
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(session?.shopName.orEmpty(), Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-            Text("ORDER SLIP", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, color = Mb.Muted)
+            Text(if (o.isSale) "SALES RECEIPT" else "ORDER SLIP", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, color = Mb.Muted)
             DashedLine()
-            SlipLine("Order", o.reference, mono = true)
-            SlipLine("Store", o.storeName)
-            SlipLine("Agent", o.agentName ?: session?.name.orEmpty())
+            SlipLine(if (o.isSale) "Receipt" else "Order", o.reference, mono = true)
+            SlipLine(if (o.isSale) "Customer" else "Store", o.storeName)
+            SlipLine(if (o.isSale) "Seller" else "Agent", o.agentName ?: session?.name.orEmpty())
             SlipLine("Date", Fmt.dateTime(o.orderedAt), mono = true)
             DashedLine()
             o.lines.forEach { l ->
@@ -214,7 +215,7 @@ fun Slip(o: Order, session: Session?) {
                 Text("Notes: ${o.notes}", style = MaterialTheme.typography.bodyMedium)
             }
             DashedLine()
-            Text("Order only — not yet delivered", Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+            Text(if (o.isSale) "Paid — thank you" else "Order only — not yet delivered", Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { OrderChips(o, showSynced = true) }
         }
     }

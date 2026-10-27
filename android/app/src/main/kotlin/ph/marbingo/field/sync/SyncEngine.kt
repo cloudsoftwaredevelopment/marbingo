@@ -10,9 +10,16 @@ import ph.marbingo.core.net.MarbingoApi
 import ph.marbingo.core.net.TokenStore
 import ph.marbingo.field.data.Iso
 import ph.marbingo.field.data.OrderStatus
+import ph.marbingo.field.data.SyncState
 import ph.marbingo.field.data.toEntities
 import ph.marbingo.field.data.packEntities
 import ph.marbingo.field.data.toEntity
+import ph.marbingo.field.data.toMeta
+import ph.marbingo.field.data.db.TruckSaleEntity
+import ph.marbingo.field.data.db.TruckSaleLineEntity
+import ph.marbingo.field.data.db.TruckSaleWithLines
+import ph.marbingo.field.data.db.TruckStockEntity
+import ph.marbingo.core.pricing.PartsJson
 import ph.marbingo.field.data.db.AppDatabase
 import ph.marbingo.field.data.db.CustomerEntity
 import ph.marbingo.field.data.db.OrderWithLines
@@ -78,9 +85,16 @@ class SyncEngine(
         pushConsent()
         pushStoreLocations()
         val pending = db.orders().pendingForPush()
-        if (pending.isEmpty() && db.customers().dirty().none { it.serverId == null }) return
-        val chunks = pending.chunked(MAX_BATCH).ifEmpty { listOf(emptyList()) }
-        for (chunk in chunks) pushChunk(chunk)
+        if (pending.isNotEmpty() || db.customers().dirty().any { it.serverId == null }) {
+            val chunks = pending.chunked(MAX_BATCH).ifEmpty { listOf(emptyList()) }
+            for (chunk in chunks) pushChunk(chunk)
+        }
+        pushTruckSales()
+    }
+
+    private suspend fun pushTruckSales() {
+        val pending = db.truck().pendingForPush()
+        for (chunk in pending.chunked(MAX_BATCH)) pushTruckChunk(chunk)
     }
 
     /** Consent given while offline: tell the server now. A failure just leaves it queued for the next sync. */
@@ -180,6 +194,85 @@ class SyncEngine(
         }
     }
 
+    /**
+     * Truck sales go in after the orders (which already carried any new stores). A walk-in sale has no customer. Stores that are
+     * still new on the device are included in this batch too, as the contract allows. Replay-safe: the server is idempotent on clientUuid.
+     */
+    private suspend fun pushTruckChunk(chunk: List<TruckSaleWithLines>) {
+        val dirty = db.customers().dirty().filter { it.serverId == null }.associateBy { it.clientUuid }
+        val inputs = mutableListOf<TruckSaleInput>()
+        val sendable = mutableListOf<TruckSaleWithLines>()
+        val usedCustomers = linkedMapOf<String, CustomerEntity>()
+        for (s in chunk) {
+            val uuid = s.sale.customerClientUuid
+            var customerUuid: String? = null
+            var customerId: Int? = null
+            if (uuid != null) {
+                val cust = dirty[uuid] ?: db.customers().get(uuid)
+                if (cust == null) {
+                    db.truck().markError(s.sale.clientUuid, "This store is missing on the device.")
+                    continue
+                }
+                if (cust.serverId == null || cust.dirty) { customerUuid = cust.clientUuid; usedCustomers[cust.clientUuid] = cust }
+                else customerId = cust.serverId
+            }
+            inputs += TruckSaleInput(
+                clientUuid = s.sale.clientUuid, customerClientUuid = customerUuid, customerId = customerId,
+                soldAt = Iso.format(s.sale.soldAt),
+                lines = s.lines.sortedBy { it.id }.map { OrderLineInput(it.itemId, it.qty) },
+            )
+            sendable += s
+        }
+        if (inputs.isEmpty()) return
+        val req = TruckSaleBatchRequest(
+            customers = usedCustomers.values.filter { it.serverId == null }.map {
+                val pin = it.hasDeviceLocation
+                CustomerInput(
+                    it.clientUuid, it.name, it.ownerName, it.phone, it.address, it.notes,
+                    lat = if (pin) it.lat else null, lng = if (pin) it.lng else null,
+                    locationAccuracy = if (pin) it.locationAccuracy else null,
+                )
+            },
+            sales = inputs,
+        )
+        val resp = try {
+            api.pushTruckSales(req)
+        } catch (e: HttpException) {
+            if (e.code() in 400..499 && e.code() != 401 && e.code() != 408 && e.code() != 429) {
+                val msg = ApiErrors.message(e)
+                sendable.forEach { db.truck().markError(it.sale.clientUuid, msg) }
+                return
+            }
+            throw e
+        }
+        db.withTransaction {
+            resp.customers.forEach { db.customers().markSynced(it.clientUuid, it.id) }
+            val byUuid = resp.results.associateBy { it.clientUuid }
+            for (s in sendable) {
+                val r = byUuid[s.sale.clientUuid] ?: continue
+                val dto = r.sale
+                if (r.ok && dto != null) {
+                    val existing = db.truck().get(s.sale.clientUuid) ?: continue
+                    val local = s.lines.associateBy { it.itemId }
+                    val rows = dto.lines.map {
+                        val l = local[it.itemId]
+                        TruckSaleLineEntity(saleClientUuid = existing.clientUuid, itemId = it.itemId, name = l?.name ?: "Item #${it.itemId}",
+                            unit = l?.unit, qty = it.qty, unitPrice = it.unitPrice, lineTotal = it.lineTotal, breakdown = PartsJson.encode(it.breakdown))
+                    }
+                    db.truck().replace(
+                        existing.copy(
+                            serverId = dto.id, syncState = SyncState.SYNCED.name, syncError = null, total = dto.total,
+                            oversold = dto.oversold, late = dto.late, updatedAt = now(),
+                        ),
+                        rows.ifEmpty { s.lines },
+                    )
+                } else {
+                    db.truck().markError(s.sale.clientUuid, r.error ?: "The server rejected this sale.")
+                }
+            }
+        }
+    }
+
     // ---- pull ----
 
     private suspend fun pull() {
@@ -203,6 +296,8 @@ class SyncEngine(
                 val (e, rows) = o.toEntities(db.orders().get(o.clientUuid), t)
                 db.orders().replace(e, rows)
             }
+            // The truck picture is replaced wholesale; no truck block means this agent has no truck (clear it).
+            db.truck().replaceTruck(resp.truck?.toMeta(), resp.truck?.stock.orEmpty().map { TruckStockEntity(it.itemId, it.qty) })
             resp.trackingSchedule?.let { sch ->
                 if (sch.days.isNotEmpty()) db.trackingMeta().saveSchedule(sch.days.joinToString(","), sch.start, sch.end)
             }

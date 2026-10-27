@@ -63,7 +63,7 @@ class AuthRepositoryImpl(
         // Another account's data is on this device: keep its unsent work safe, otherwise start clean.
         val owner = tokens.dataOwnerId
         if (owner != null && owner != resp.user.id) {
-            val waiting = withContext(Dispatchers.IO) { db.orders().waitingCountNow() + db.customers().dirtyCountNow() }
+            val waiting = withContext(Dispatchers.IO) { db.orders().waitingCountNow() + db.truck().waitingCountNow() + db.customers().dirtyCountNow() }
             if (waiting > 0) {
                 throw UserFacingException("Another account has orders on this device that haven't synced yet. Sign in with that account first.")
             }
@@ -91,7 +91,7 @@ class AuthRepositoryImpl(
 
     override suspend fun signOut(force: Boolean): Boolean {
         if (!force) {
-            val waiting = withContext(Dispatchers.IO) { db.orders().waitingCountNow() + db.customers().dirtyCountNow() }
+            val waiting = withContext(Dispatchers.IO) { db.orders().waitingCountNow() + db.truck().waitingCountNow() + db.customers().dirtyCountNow() }
             if (waiting > 0) return false
         }
         trigger.cancelAll()

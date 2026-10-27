@@ -95,7 +95,12 @@ router.get('/', authenticate, wrap(async (req, res) => {
   const where = q
     ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }] }
     : {};
-  res.json((await prisma.item.findMany({ where, include, orderBy: { name: 'asc' }, take: where.OR ? 50 : 2000 })).map(shapeItem));
+  const items = await prisma.item.findMany({ where, include, orderBy: { name: 'asc' }, take: where.OR ? 50 : 2000 });
+  // Units of each item currently on trucks (all trucks).
+  const onTruck = new Map((await prisma.truckStock.groupBy({
+    by: ['itemId'], where: { itemId: { in: items.map((i) => i.id) } }, _sum: { qty: true },
+  })).map((g) => [g.itemId, g._sum.qty || 0]));
+  res.json(items.map((i) => ({ ...shapeItem(i), onTruck: onTruck.get(i.id) || 0 })));
 }));
 
 router.get('/by-sku/:sku', authenticate, wrap(async (req, res) => {

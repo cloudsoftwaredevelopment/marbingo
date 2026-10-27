@@ -36,8 +36,11 @@ class PrinterRepositoryImpl(private val context: Context, private val customers:
         set(v) { prefs.edit().putString(KEY_PRINTER, v).apply() }
 
     override suspend fun printOrder(order: Order, session: Session) {
-        val address = customers.get(order.storeClientUuid)?.address
+        val address = order.storeClientUuid.takeIf { it.isNotEmpty() }?.let { customers.get(it)?.address }
         val data = ReceiptData(
+            title = if (order.isSale) ReceiptData.SALES_TITLE else "ORDER SLIP",
+            refLabel = if (order.isSale) "Receipt" else "Order",
+            footer = if (order.isSale) ReceiptData.SALES_FOOTER else "Order only — not yet delivered",
             shopName = session.shopName,
             ref = order.reference,
             storeName = order.storeName,

@@ -24,6 +24,10 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/sync', require('./routes/sync'));
 app.use('/api/tracking', require('./routes/tracking'));
+app.use('/api/trucks', require('./routes/trucks'));
+app.use('/api/truck-periods', require('./routes/truckPeriods'));
+app.use('/api/truck-transfers', require('./routes/truckTransfers'));
+app.use('/api/truck-sales', require('./routes/truckSales'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
@@ -38,7 +42,7 @@ app.use((err, req, res, next) => {
   if (err.code === 'P2002') return res.status(409).json({ error: 'That value is already in use.' });
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image must be 8 MB or smaller.' });
   console.error(err);
-  if (err.expose) return res.status(err.status || 400).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  if (err.expose) return res.status(err.status || 400).json({ error: err.message, ...(err.fields ? { fields: err.fields } : {}), ...(err.extra || {}) });
   res.status(err.status || 500).json({ error: 'Something went wrong.' });
 });
 

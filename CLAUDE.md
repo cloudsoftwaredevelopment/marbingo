@@ -22,7 +22,7 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 ## Conventions
 - Money is **integer centavos** everywhere (DB, API). Client formats with `lib/format.js` (`pesoWhole` reports, `peso` prices).
 - Shop timezone **Asia/Manila**; all period/bucket logic lives in `server/src/lib/periods.js` (weeks start Monday). The server resolves presets.
-- Every stock change writes a `stock_moves` row; `qty_on_hand` must equal the sum of moves. Turnover = units ÷ ((opening+closing)/2) from the ledger (`lib/turnover.js`).
+- Every stock change writes a `stock_moves` row; `qty_on_hand` must equal the sum of moves. Turnover = units ÷ ((opening+closing)/2) from the ledger (`lib/turnover.js`); opening/closing = warehouse + truck ledgers (total company stock).
 - Errors: `{ error, fields? }`. Helpers in `server/src/lib/http.js` (`idParam` for `:id` routes, `EMAIL_RE`). Image uploads go through `server/src/lib/upload.js` (rejects non JPG/PNG/WEBP with 400).
 - Stock decrements use a conditional `updateMany where qtyOnHand gte` — never read-then-write.
 - Sessions: `users.token_version` is in every JWT; bump it to revoke sessions (password change, reset, deactivation).
@@ -44,6 +44,9 @@ After `schema.prisma` changes: `npx prisma migrate dev`.
 | Stores | ✅ | ✅ | | ✅ (app; edit own) |
 | Top 10 sidebar | turnover + revenue | turnover + revenue | turnover only | turnover only |
 | Ecosystem Map (`/map`) | ✅ | | | tracked (work hours) |
+| Trucks (`/trucks`): view, request load/top-up/return, count | ✅ | ✅ | | |
+| Trucks: CRUD, open period (approve beginning inventory), approve transfers, close | ✅ | | | |
+| Sell from truck (Android) | ✅ | | | truck agents only |
 | Admin (users, categories, pack types, shop name + logo letters, tracking schedule) | ✅ | | | |
 
 ## Demo logins (password `marbingo123`)
@@ -67,8 +70,11 @@ cp app/build/outputs/apk/debug/app-debug.apk ../downloads/marbingo-field-v<VER>-
 - APKs: `downloads/` served by nginx at `/downloads/` (MIME `application/vnd.android.package-archive`); APKs + `index.html` are gitignored.
 
 - Build types: `debug` (43 MB) and `staging` (R8-minified, debug-signed, same applicationId `ph.marbingo.field.debug` so it upgrades the debug app, ~25 MB — publish this one as `marbingo-field-v<VER>.apk`; smaller APKs pass Play Protect's scan faster). `./gradlew :app:assembleStaging`.
-- Room is at **version 3** (`MIGRATION_1_2`: customer lat/lng + `location_points` + `tracking_meta`; `MIGRATION_2_3`: `item_packs`, line breakdowns, items rebuilt without wholesale price, forces one full re-pull), covered by `MigrationTest`.
+- Room is at **version 4** (`MIGRATION_3_4`: `truck_meta`, `truck_stock`, `truck_sales`, `truck_sale_lines`; `MIGRATION_1_2`: customer lat/lng + `location_points` + `tracking_meta`; `MIGRATION_2_3`: `item_packs`, line breakdowns, items rebuilt without wholesale price, forces one full re-pull), covered by `MigrationTest`.
 - Location tracking lives in `app/.../tracking/`: `LocationTrackingService` (foreground, type `location`), `TrackingScheduler` (exact alarms at work-hour boundaries + every 15 min on duty to revive a killed service; boot/package-replaced/time-change receivers), `LocationUploader` (outbox → `POST /api/tracking/points`), onboarding UI in `ui/tracking/`. Needs Google Play services (fused location).
+
+## Trucks (mobile warehouses)
+Contract: `docs/truck-api.md`. A **truck agent** = AGENT assigned to an active `Truck` (no user flag); others are booking agents. Warehouse stays `items.qty_on_hand` + `stock_moves` (new reasons `truck_load`/`truck_return`); trucks have their own ledger `truck_stock == SUM(truck_moves)` (seed checks both). Monthly `truck_periods`: draft → **open (MANAGER approves beginning inventory = carry-over + pending loads)** → counting (staff enter count on web) → closed (MANAGER; posts `count_variance` so leftovers carry over, freezes MATCHED/NOT MATCHED report with missing/surplus at retail, creates next draft). Mid-month top-ups/returns need MANAGER approval. Truck sales (`POST /api/truck-sales/batch`, offline, idempotent by `client_uuid`) create `Sale` channel `truck`, decrement truck stock **unconditionally** (offline oversell → `oversold` flag, stock may go negative; deliberate exception) and never touch warehouse moves; sales landing after their period closed post to the current period as `late`. Logic: `server/src/lib/truck.js` (pure, tested) + `lib/truckOps.js` (transactions, used by routes + seed). Web: `/trucks`, `/trucks/:id`. Android: Home truck card, "Sell from truck" (`OrderMode.TRUCK_SALE`), available = server truck stock − unsynced sale lines (never mutated locally), SALES RECEIPT print/PDF.
 
 ## Ecosystem Map (tracking)
 Contract: `docs/tracking-api.md`. Agents' tablets record GPS **only inside the work schedule** (`settings.tracking_schedule`, edited in Admin → Tracking; server also rejects out-of-hours points). `location_points` are purged after 365 days (`server/src/jobs/retention.js`); `agent_stops` (derived by `lib/tracking.js#detectStops`: ≥3 min within 60 m, matched to a store ≤75 m) are kept. Stops are recomputed per agent-day (debounced after uploads, single-flight, also on read when stale); routes cached in `track_cache`.

@@ -112,6 +112,8 @@ data class SyncPullResponse(
     val packTypes: List<PackTypeDto> = emptyList(),
     val trackingSchedule: TrackingScheduleDto? = null,
     val trackingConsentAt: String? = null,
+    /** Present only for an agent assigned to an active truck (docs/truck-api.md); null/absent otherwise. */
+    val truck: TruckDto? = null,
 )
 
 data class CustomerInput(
@@ -170,3 +172,51 @@ data class CustomerResponse(val customer: CustomerDto)
 data class OrderResponse(val order: OrderDto)
 data class CancelRequest(val reason: String)
 data class ApiErrorBody(val error: String?, val fields: Map<String, String>?)
+
+// ---- Trucks (docs/truck-api.md) ----
+
+data class TruckPeriodDto(val id: Int, val month: String, val status: String) // draft | open | counting
+data class TruckStockDto(val itemId: Int, val qty: Int)
+data class TruckDto(
+    val id: Int,
+    val name: String,
+    val plate: String? = null,
+    val driverName: String? = null,
+    val period: TruckPeriodDto? = null,
+    /** Full list of non-zero rows (never incremental); may be negative after offline oversell. */
+    val stock: List<TruckStockDto> = emptyList(),
+)
+
+data class TruckSaleInput(
+    val clientUuid: String,
+    val customerClientUuid: String? = null,
+    val customerId: Int? = null,
+    val soldAt: String,
+    val lines: List<OrderLineInput>,
+)
+
+data class TruckSaleBatchRequest(val customers: List<CustomerInput>, val sales: List<TruckSaleInput>)
+
+data class TruckSaleLineDto(
+    val itemId: Int,
+    val qty: Int,
+    val unitPrice: Long,
+    val lineTotal: Long,
+    val breakdown: List<PricePartDto>? = null,
+)
+
+data class TruckSaleDto(
+    val id: Int,
+    val clientUuid: String,
+    val truckId: Int? = null,
+    val periodId: Int? = null,
+    val soldAt: String? = null,
+    val customerId: Int? = null,
+    val total: Long,
+    val oversold: Boolean = false,
+    val late: Boolean = false,
+    val lines: List<TruckSaleLineDto> = emptyList(),
+)
+
+data class TruckSaleResult(val clientUuid: String, val ok: Boolean, val sale: TruckSaleDto? = null, val error: String? = null)
+data class TruckSaleBatchResponse(val customers: List<CustomerIdResult> = emptyList(), val results: List<TruckSaleResult> = emptyList())

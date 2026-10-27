@@ -106,8 +106,11 @@ router.get('/top-items', wrap(async (req, res) => {
     SELECT i.id, i.name,
       COALESCE((SELECT SUM(l.qty) FROM sale_lines l JOIN sales s ON s.id = l.sale_id
                 WHERE l.item_id = i.id AND s.sold_at >= ${start} AND s.sold_at < ${closeAt}), 0)::int AS units,
-      COALESCE((SELECT SUM(m.change) FROM stock_moves m WHERE m.item_id = i.id AND m.at < ${start}), 0)::int AS opening,
-      COALESCE((SELECT SUM(m.change) FROM stock_moves m WHERE m.item_id = i.id AND m.at < ${closeAt}), 0)::int AS closing
+      -- Company stock = warehouse + trucks, so loads/returns cancel out and truck sales count as stock leaving.
+      (COALESCE((SELECT SUM(m.change) FROM stock_moves m WHERE m.item_id = i.id AND m.at < ${start}), 0)
+       + COALESCE((SELECT SUM(m.change) FROM truck_moves m WHERE m.item_id = i.id AND m.at < ${start}), 0))::int AS opening,
+      (COALESCE((SELECT SUM(m.change) FROM stock_moves m WHERE m.item_id = i.id AND m.at < ${closeAt}), 0)
+       + COALESCE((SELECT SUM(m.change) FROM truck_moves m WHERE m.item_id = i.id AND m.at < ${closeAt}), 0))::int AS closing
     FROM items i`;
   const out = rows
     .filter((r) => r.units > 0)

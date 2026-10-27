@@ -28,6 +28,7 @@ const NAV = [
   { to: '/pos', label: 'Record sale', cap: 'pos', icon: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6" /><path d="M9 12h6" /></> },
   { to: '/orders', label: 'Orders', agentLabel: 'My orders', cap: 'orders', badge: true, icon: <><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z" /><path d="M8 6H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-2" /><path d="M9 12h6" /><path d="M9 16h4" /></> },
   { to: '/stores', label: 'Stores', cap: 'stores', icon: <><path d="M4 9l1.5-5h13L20 9" /><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9" /><path d="M5 12v8h14v-8" /><path d="M10 20v-5h4v5" /></> },
+  { to: '/trucks', label: 'Trucks', cap: 'trucks', icon: <><path d="M2 6h11v10H2z" /><path d="M13 10h4l3 3v3h-7" /><circle cx="7" cy="17.5" r="1.8" /><circle cx="16.5" cy="17.5" r="1.8" /></> },
   { to: '/map', label: 'Ecosystem Map', cap: 'map', icon: <><path d="M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z" /><path d="M9 4v14" /><path d="M15 6.5v14" /></> },
   { to: '/profile', label: 'My profile', icon: <><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></> },
   { to: '/admin', label: 'Admin', cap: 'admin', icon: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></> }

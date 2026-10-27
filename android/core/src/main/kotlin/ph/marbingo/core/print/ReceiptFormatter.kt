@@ -24,7 +24,16 @@ data class ReceiptData(
     val total: Long,
     val notes: String? = null,
     val footer: String = "Order only — not yet delivered",
-)
+    /** Heading under the shop name. */
+    val title: String = "ORDER SLIP",
+    /** Label of the [ref] row ("Order: #12", "Receipt: S-3F9A"). */
+    val refLabel: String = "Order",
+) {
+    companion object {
+        const val SALES_TITLE = "SALES RECEIPT"
+        const val SALES_FOOTER = "Paid — thank you"
+    }
+}
 
 data class ReceiptLine(
     val text: String,
@@ -42,9 +51,9 @@ object ReceiptFormatter {
         val c = EscPos.Align.CENTER
         val rule = "-".repeat(columns)
         wrap(r.shopName, columns).forEach { out += ReceiptLine(it, c, bold = true, doubleHeight = true) }
-        out += ReceiptLine("ORDER SLIP", c, bold = true)
+        out += ReceiptLine(r.title, c, bold = true)
         out += ReceiptLine(rule)
-        out += ReceiptLine("Order: ${r.ref}")
+        out += ReceiptLine("${r.refLabel}: ${r.ref}")
         out += ReceiptLine("Date: ${r.orderedAt}")
         out += ReceiptLine("Agent: ${r.agentName}")
         wrap("Store: ${r.storeName}", columns).forEach { out += ReceiptLine(it) }

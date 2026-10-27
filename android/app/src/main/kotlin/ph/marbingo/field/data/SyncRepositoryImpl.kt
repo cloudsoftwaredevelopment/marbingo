@@ -12,8 +12,10 @@ class SyncRepositoryImpl(private val db: AppDatabase, private val trigger: SyncT
         db.orders().waitingCount(),
         db.customers().dirtyCount(),
         trigger.running.onStart { emit(false) },
-    ) { meta, orders, stores, running ->
-        SyncStatus(meta?.lastSyncedAt, orders, stores, running, meta?.lastError)
+        db.truck().waitingCount(),
+    ) { meta, orders, stores, running, truckSales ->
+        // Truck sales wait to sync just like orders, so they share the "waiting" count.
+        SyncStatus(meta?.lastSyncedAt, orders + truckSales, stores, running, meta?.lastError)
     }
 
     override fun syncNow() = trigger.syncNow()

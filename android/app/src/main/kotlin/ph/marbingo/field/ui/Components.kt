@@ -69,7 +69,7 @@ fun SyncChip(o: Order) {
 @Composable
 fun OrderChips(o: Order, showSynced: Boolean = false) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip(statusLabel(o.status), statusTone(o.status))
+        if (o.isSale) Chip("Sold", Tone.Good) else Chip(statusLabel(o.status), statusTone(o.status))
         if (o.syncState != SyncState.SYNCED || showSynced) SyncChip(o)
     }
 }

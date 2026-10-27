@@ -3,6 +3,7 @@ package ph.marbingo.field.data
 import ph.marbingo.core.model.CustomerDto
 import ph.marbingo.core.model.ItemDto
 import ph.marbingo.core.model.OrderDto
+import ph.marbingo.core.model.TruckDto
 import ph.marbingo.core.pricing.PartsJson
 import ph.marbingo.field.data.db.*
 import java.time.Instant
@@ -84,3 +85,28 @@ internal fun OrderDto.toEntities(existing: OrderEntity?, now: Long): Pair<OrderE
         breakdown = PartsJson.encode(it.breakdown), deliveredBreakdown = PartsJson.encode(it.deliveredBreakdown)) }
     return entity to rows
 }
+
+internal fun TruckSaleWithLines.toOrder() = Order(
+    clientUuid = sale.clientUuid,
+    serverId = sale.serverId,
+    storeClientUuid = sale.customerClientUuid.orEmpty(),
+    storeName = sale.storeName ?: WALK_IN,
+    agentName = sale.agentName,
+    orderedAt = sale.soldAt,
+    status = OrderStatus.DELIVERED,
+    syncState = enumOr(sale.syncState, SyncState.QUEUED),
+    syncError = sale.syncError,
+    notes = null,
+    total = sale.total,
+    lines = lines.sortedBy { it.id }.map { OrderLine(it.itemId, it.name, it.unit, it.qty, it.unitPrice, it.lineTotal, null, PartsJson.decode(it.breakdown)) },
+    deliveredAt = sale.soldAt,
+    cancelledReason = null,
+    isSale = true,
+)
+
+const val WALK_IN = "Walk-in customer"
+
+internal fun TruckDto.toMeta() = TruckMetaEntity(
+    truckId = id, name = name, plate = plate, driverName = driverName,
+    periodId = period?.id, periodMonth = period?.month, periodStatus = period?.status,
+)

@@ -71,10 +71,10 @@ object ReceiptPdf {
         val center = Layout.Alignment.ALIGN_CENTER
 
         block(session.shopName, title, center)
-        block("ORDER SLIP", bold, center, gap = 4f)
+        block(if (order.isSale) "SALES RECEIPT" else "ORDER SLIP", bold, center, gap = 4f)
         divider()
-        block("Order ${order.reference}", bold)
-        block("Store: ${order.storeName}", body)
+        block((if (order.isSale) "Receipt " else "Order ") + order.reference, bold)
+        block((if (order.isSale) "Customer: " else "Store: ") + order.storeName, body)
         block("Agent: ${order.agentName ?: session.name}", body)
         block(Fmt.dateTime(order.orderedAt), mono, gap = 4f)
         divider()
@@ -99,7 +99,7 @@ object ReceiptPdf {
             block("Notes: ${order.notes}", body, gap = 4f)
         }
         divider()
-        block(FOOTER_TEXT, bold, center, gap = 2f)
+        block(if (order.isSale) "Paid — thank you" else FOOTER_TEXT, bold, center, gap = 2f)
         block(if (order.serverId == null) "Not yet synced" else "Synced", small, center, gap = 2f)
         return y + MARGIN
     }
@@ -128,10 +128,10 @@ object ReceiptPdf {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Order ${order.reference} - ${order.storeName}")
+            putExtra(Intent.EXTRA_SUBJECT, (if (order.isSale) "Receipt " else "Order ") + "${order.reference} - ${order.storeName}")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val chooser = Intent.createChooser(send, "Share order slip").apply {
+        val chooser = Intent.createChooser(send, if (order.isSale) "Share sales receipt" else "Share order slip").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(chooser)

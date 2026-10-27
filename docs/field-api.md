@@ -35,9 +35,10 @@ Shared by the backend, the web dashboard and the Android app. All money is **int
 { "serverTime": "…",                 // pass back as `since` next time
   "items": [Item], "categories": [{ "id", "name" }],
   "customers": [Customer],           // active and inactive, changed since `since`
-  "orders": [Order] }                // the caller's own orders changed since `since` (MANAGER: all)
+  "orders": [Order],                 // the caller's own orders changed since `since` (MANAGER: all)
+  "truck": Truck | null }            // AGENT assigned to an active truck, else null — see docs/truck-api.md
 ```
-Rows are those with `updatedAt > since`. Categories are always returned in full.
+Rows are those with `updatedAt > since`. Categories are always returned in full. `truck` (`{id, name, plate, driverName, period, stock:[{itemId, qty}]}`) is sent in full on every pull. Truck agents also sell from the truck via `POST /api/truck-sales/batch` — contract in `docs/truck-api.md`.
 
 ## Customers
 
@@ -87,6 +88,7 @@ Rows are those with `updatedAt > since`. Categories are always returned in full.
 | | Manager | Inventory | Cashier | Agent |
 |---|---|---|---|---|
 | sync/pull, orders/batch | ✅ | | | ✅ |
+| truck-sales/batch | ✅ (with `truckId`) | | | ✅ (own truck) |
 | list/view orders | all | all | | own |
 | deliver / cancel | ✅ | ✅ | | cancel own pending |
 | customers read | ✅ | ✅ | | ✅ |

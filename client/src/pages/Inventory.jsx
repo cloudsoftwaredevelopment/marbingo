@@ -45,10 +45,10 @@ export default function Inventory() {
           <p className="empty">{q.trim() ? 'No items match your search.' : 'No items yet.'}</p>
         ) : (
           <div className="table-wrap">
-            <table className="tbl" style={{ minWidth: 760 }}>
+            <table className="tbl" style={{ minWidth: 840 }}>
               <thead>
                 <tr>
-                  <th scope="col">Item</th><th scope="col" className="num">Stock</th><th scope="col" className="num">Retail price</th>
+                  <th scope="col">Item</th><th scope="col" className="num">Warehouse</th><th scope="col" className="num">On trucks</th><th scope="col" className="num">Retail price</th>
                   <th scope="col">Packs</th><th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -66,6 +66,7 @@ export default function Inventory() {
                         {num(i.qtyOnHand)} {unitPlural(i.unit)}{' '}
                         {low && <span className={'badge ' + (i.qtyOnHand <= 0 ? 'badge-out' : 'badge-low')} style={{ fontFamily: 'var(--font-sans)', marginLeft: 6 }}>{i.qtyOnHand <= 0 ? 'Out' : 'Low'}</span>}
                       </td>
+                      <td className="num" style={{ whiteSpace: 'nowrap' }}>{num(i.onTruck)}</td>
                       <td className="num" style={{ whiteSpace: 'nowrap' }}>{peso(i.sellingPrice)} / {i.unit}</td>
                       <td>
                         {i.packs?.length

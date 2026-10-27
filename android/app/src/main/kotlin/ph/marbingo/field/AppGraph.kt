@@ -47,6 +47,7 @@ class AppGraph(context: Context) {
     val catalog: CatalogRepository by lazy { CatalogRepositoryImpl(db.items()) }
     val stores: StoreRepository by lazy { StoreRepositoryImpl(db.customers(), scheduler) }
     val orders: OrderRepository by lazy { OrderRepositoryImpl(db, api, tokenStore, scheduler) }
+    val truck: TruckRepository by lazy { TruckRepositoryImpl(db, tokenStore, scheduler) }
     val sync: SyncRepository by lazy { SyncRepositoryImpl(db, scheduler) }
     val printer: PrinterRepository by lazy { PrinterRepositoryImpl(appContext, db.customers()) }
 

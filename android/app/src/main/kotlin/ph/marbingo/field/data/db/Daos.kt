@@ -15,6 +15,12 @@ interface ItemDao {
     )
     fun search(q: String): Flow<List<ItemWithPacks>>
 
+    @Transaction @Query(
+        "SELECT * FROM items WHERE id IN (SELECT itemId FROM truck_stock) AND (name LIKE '%' || :q || '%' OR sku LIKE '%' || :q || '%' " +
+            "OR category LIKE '%' || :q || '%') ORDER BY name COLLATE NOCASE LIMIT 300"
+    )
+    fun searchOnTruck(q: String): Flow<List<ItemWithPacks>>
+
     @Transaction @Query("SELECT * FROM items WHERE sku = :sku LIMIT 1") suspend fun bySku(sku: String): ItemWithPacks?
     @Transaction @Query("SELECT * FROM items WHERE id = :id") suspend fun byId(id: Int): ItemWithPacks?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<ItemEntity>)
@@ -125,4 +131,55 @@ interface TrackingMetaDao {
     suspend fun saveLastFix(at: Long) { ensureRow(); updateLastFix(at) }
     suspend fun saveLastUpload(at: Long) { ensureRow(); updateLastUpload(at) }
     suspend fun saveError(error: String?) { ensureRow(); updateError(error) }
+}
+
+private const val AVAILABLE_SQL =
+    "SELECT s.itemId AS itemId, COALESCE(i.name, 'Item #' || s.itemId) AS name, i.unit AS unit, s.qty AS qty, " +
+        "s.qty - COALESCE((SELECT SUM(l.qty) FROM truck_sale_lines l JOIN truck_sales t ON t.clientUuid = l.saleClientUuid " +
+        "WHERE t.syncState != 'SYNCED' AND l.itemId = s.itemId), 0) AS available " +
+        "FROM truck_stock s LEFT JOIN items i ON i.id = s.itemId"
+
+@Dao
+interface TruckDao {
+    @Query("SELECT * FROM truck_meta WHERE id = 1") fun observeMeta(): Flow<TruckMetaEntity?>
+    @Query("SELECT * FROM truck_meta WHERE id = 1") suspend fun meta(): TruckMetaEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putMeta(m: TruckMetaEntity)
+    @Query("DELETE FROM truck_meta") suspend fun clearMeta()
+    @Query("DELETE FROM truck_stock") suspend fun clearStock()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertStock(rows: List<TruckStockEntity>)
+
+    /** The pull replaces the whole truck picture; null (no truck) clears it. Call inside a transaction. */
+    @Transaction
+    suspend fun replaceTruck(meta: TruckMetaEntity?, stock: List<TruckStockEntity>) {
+        clearMeta(); clearStock()
+        if (meta != null) { putMeta(meta); insertStock(stock) }
+    }
+
+    /** Available = server stock - lines of sales that have not synced yet. truck_stock itself is never edited locally. */
+    @Query("$AVAILABLE_SQL ORDER BY name COLLATE NOCASE") fun observeStock(): Flow<List<TruckStockRow>>
+    @Query("$AVAILABLE_SQL WHERE s.itemId = :itemId") suspend fun stockFor(itemId: Int): TruckStockRow?
+
+    @Transaction @Query("SELECT * FROM truck_sales ORDER BY soldAt DESC LIMIT :limit")
+    fun recent(limit: Int): Flow<List<TruckSaleWithLines>>
+    @Transaction @Query("SELECT * FROM truck_sales WHERE clientUuid = :uuid")
+    fun observe(uuid: String): Flow<TruckSaleWithLines?>
+    @Transaction @Query("SELECT * FROM truck_sales WHERE syncState IN ('QUEUED','ERROR') ORDER BY soldAt")
+    suspend fun pendingForPush(): List<TruckSaleWithLines>
+    @Query("SELECT * FROM truck_sales WHERE clientUuid = :uuid") suspend fun get(uuid: String): TruckSaleEntity?
+    @Query("SELECT COUNT(*) FROM truck_sales WHERE syncState IN ('QUEUED','ERROR')") fun waitingCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM truck_sales WHERE syncState IN ('QUEUED','ERROR')") suspend fun waitingCountNow(): Int
+    @Query("UPDATE truck_sales SET syncState = 'ERROR', syncError = :error, attempts = attempts + 1 WHERE clientUuid = :uuid")
+    suspend fun markError(uuid: String, error: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(s: TruckSaleEntity)
+    @Insert suspend fun insertLines(lines: List<TruckSaleLineEntity>)
+    @Query("DELETE FROM truck_sale_lines WHERE saleClientUuid = :uuid") suspend fun deleteLines(uuid: String)
+
+    /** Replaces a sale and its lines. Call inside a transaction. */
+    @Transaction
+    suspend fun replace(s: TruckSaleEntity, lines: List<TruckSaleLineEntity>) {
+        deleteLines(s.clientUuid)
+        upsert(s)
+        insertLines(lines)
+    }
 }

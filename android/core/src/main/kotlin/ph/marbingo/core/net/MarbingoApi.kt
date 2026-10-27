@@ -17,6 +17,7 @@ interface MarbingoApi {
 
     @GET("api/sync/pull") suspend fun pull(@Query("since") since: String?): SyncPullResponse
     @POST("api/orders/batch") suspend fun pushOrders(@Body body: OrderBatchRequest): OrderBatchResponse
+    @POST("api/truck-sales/batch") suspend fun pushTruckSales(@Body body: TruckSaleBatchRequest): TruckSaleBatchResponse
     @POST("api/customers") suspend fun upsertCustomer(@Body body: CustomerInput): CustomerResponse
     @PUT("api/customers/{id}") suspend fun updateCustomerLocation(@Path("id") id: Int, @Body body: CustomerLocationInput): CustomerResponse
 

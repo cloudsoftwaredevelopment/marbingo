@@ -23,6 +23,7 @@ import ph.marbingo.field.ui.*
 import ph.marbingo.field.ui.theme.Mb
 import ph.marbingo.field.tracking.TrackingState
 import ph.marbingo.field.ui.tracking.TrackingStatusCard
+import ph.marbingo.field.ui.truck.TruckCard
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -32,7 +33,10 @@ class HomeViewModel(private val deps: UiDeps) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val sync: StateFlow<SyncStatus> = deps.sync.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SyncStatus(null, 0, 0, false, null))
-    val todayOrders: StateFlow<List<Order>> = deps.orders.recent(200)
+    /** Null for booking agents: the truck card and everything truck-related stay hidden. */
+    val truck: StateFlow<TruckInfo?> = deps.truck.observeTruck()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val todayOrders: StateFlow<List<Order>> = combine(deps.orders.recent(200), deps.truck.recent(200)) { o, t -> o + t }
         .map { list -> list.filter { Fmt.isToday(it.orderedAt) }.sortedByDescending { it.orderedAt } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -78,6 +82,7 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
     val orders by vm.todayOrders.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val tracking by vm.tracking.collectAsState()
+    val truck by vm.truck.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) vm.onResume() }
@@ -99,6 +104,9 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
                 tracking?.let { t ->
                     item { TrackingStatusCard(t, onClick = { nav.navigate(Routes.trackingSetup()) }) }
                 }
+                truck?.let { t ->
+                    item { TruckCard(t, onSell = { nav.navigate(Routes.TRUCK_SALE) }, onStock = { nav.navigate(Routes.TRUCK_STOCK) }) }
+                }
                 item { SyncCard(sync, onSync = vm::syncNow) }
                 item {
                     PrimaryButton(
@@ -108,12 +116,12 @@ fun HomeScreen(vm: HomeViewModel, nav: NavController) {
                         icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                     )
                 }
-                item { ScreenTitle("Today's orders", Modifier.padding(top = 8.dp)) }
+                item { ScreenTitle(if (truck != null) "Today's orders and sales" else "Today's orders", Modifier.padding(top = 8.dp)) }
                 if (orders.isEmpty()) {
                     item { EmptyState("No orders today yet", "Orders you take today appear here.") }
                 } else {
                     items(orders, key = { it.clientUuid }) { o ->
-                        OrderRow(o, onClick = { nav.navigate(Routes.order(o.clientUuid)) }, showDate = false)
+                        OrderRow(o, onClick = { nav.navigate(if (o.isSale) Routes.saleReceipt(o.clientUuid) else Routes.order(o.clientUuid)) }, showDate = false)
                     }
                 }
             }

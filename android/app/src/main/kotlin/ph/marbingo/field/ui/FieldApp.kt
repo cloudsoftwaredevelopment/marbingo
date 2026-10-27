@@ -30,6 +30,9 @@ import ph.marbingo.field.ui.settings.SettingsScreen
 import ph.marbingo.field.ui.settings.SettingsViewModel
 import ph.marbingo.field.ui.stores.*
 import ph.marbingo.field.ui.theme.Mb
+import ph.marbingo.field.ui.neworder.OrderMode
+import ph.marbingo.field.ui.truck.TruckStockScreen
+import ph.marbingo.field.ui.truck.TruckStockViewModel
 import ph.marbingo.field.ui.tracking.OnboardingViewModel
 import ph.marbingo.field.ui.tracking.TrackingSetupScreen
 import kotlinx.coroutines.flow.first
@@ -126,6 +129,19 @@ private fun AppNav(session: Session?) {
             val uuid = e.arguments?.getString("uuid").orEmpty()
             val vm: ReceiptViewModel = viewModel(factory = vmFactory { ReceiptViewModel(deps, uuid) })
             ReceiptScreen(vm, nav)
+        }
+        composable(Routes.SALE_RECEIPT, arguments = listOf(navArgument("uuid") { type = NavType.StringType })) { e ->
+            val uuid = e.arguments?.getString("uuid").orEmpty()
+            val vm: ReceiptViewModel = viewModel(factory = vmFactory { ReceiptViewModel(deps, uuid, sale = true) })
+            ReceiptScreen(vm, nav)
+        }
+        composable(Routes.TRUCK_SALE) { e ->
+            val vm: NewOrderViewModel = viewModel(e, factory = vmFactory { NewOrderViewModel(deps, OrderMode.TRUCK_SALE) })
+            NewOrderScreen(vm, nav, e, null)
+        }
+        composable(Routes.TRUCK_STOCK) {
+            val vm: TruckStockViewModel = viewModel(factory = vmFactory { TruckStockViewModel(deps) })
+            TruckStockScreen(vm, nav)
         }
         composable(
             Routes.NEW_ORDER,

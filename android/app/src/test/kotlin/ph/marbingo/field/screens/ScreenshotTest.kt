@@ -19,6 +19,9 @@ import ph.marbingo.field.tracking.TrackingSchedule
 import ph.marbingo.field.tracking.TrackingState
 import ph.marbingo.field.ui.LocalDeps
 import ph.marbingo.field.ui.preview.FakeDeps
+import ph.marbingo.field.ui.preview.FakeTruck
+import ph.marbingo.field.data.TruckInfo
+import ph.marbingo.field.data.TruckStockLine
 import ph.marbingo.field.ui.preview.FakeTracking
 import ph.marbingo.field.ui.theme.MarbingoTheme
 import ph.marbingo.field.ui.tracking.OnboardingViewModel
@@ -146,5 +149,47 @@ class ScreenshotTest {
         rule.onNodeWithText("Set location").performClick()
         rule.onNodeWithText("Update location here").assertExists()
         shot("22-store-detail-located")
+    }
+
+    private fun truckDeps(status: String? = "open") = FakeDeps(
+        truck = FakeTruck(
+            TruckInfo(2, "Truck 2", "NEG 4821", "Pedro Alvarez", status, "2026-10", 527),
+            listOf(TruckStockLine(1, "Jasmine rice", "kg", 400, 380), TruckStockLine(2, "Cooking oil 1L", "btl", 12, 12), TruckStockLine(4, "Instant noodles", "pc", 120, 120)),
+        ),
+    )
+
+    @Test fun truckHomeCard() {
+        assumeTrue(dir != null)
+        rule.setContent { FieldApp(depsOverride = truckDeps()) }
+        rule.onNodeWithText("Sell from truck").assertExists()
+        shot("23-home-truck-card")
+    }
+
+    @Test fun truckHomeWaitingForApproval() {
+        assumeTrue(dir != null)
+        rule.setContent { FieldApp(depsOverride = truckDeps("draft")) }
+        rule.onNodeWithText("Waiting for manager approval").assertExists()
+        shot("24-home-truck-waiting")
+    }
+
+    @Test fun truckSaleReview() {
+        assumeTrue(dir != null)
+        rule.setContent { FieldApp(depsOverride = truckDeps()) }
+        rule.onNodeWithText("Sell from truck").performClick()
+        rule.onAllNodesWithText("Jasmine rice").onFirst().performClick()
+        rule.onAllNodesWithText("Cooking oil 1L").onFirst().performClick()
+        shot("25-truck-items")
+        rule.onNodeWithText("Review sale").performClick()
+        rule.onAllNodesWithText("Walk-in customer").onFirst().assertExists()
+        shot("26-truck-sale-review")
+        rule.onNodeWithText("Complete sale").performClick()
+        rule.onNodeWithText("SALES RECEIPT").assertExists()
+        shot("27-truck-sales-receipt")
+    }
+
+    @Test fun bookingAgentSeesNoTruck() {
+        assumeTrue(dir != null)
+        rule.setContent { FieldApp(depsOverride = FakeDeps()) }
+        rule.onNodeWithText("Sell from truck").assertDoesNotExist()
     }
 }

@@ -10,7 +10,9 @@ router.use(authenticate, requireRole('MANAGER'));
 router.param('id', idParam('User not found.'));
 
 router.get('/', wrap(async (req, res) => {
-  const users = await prisma.user.findMany({ orderBy: { employeeId: 'asc' } });
+  // ?role=AGENT narrows the list (e.g. the truck assignment dropdown).
+  const where = ROLES.includes(req.query.role) ? { role: req.query.role } : {};
+  const users = await prisma.user.findMany({ where, orderBy: { employeeId: 'asc' } });
   res.json(users.map(publicUser));
 }));
 

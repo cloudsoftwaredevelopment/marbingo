@@ -168,4 +168,71 @@ class NewOrderViewModelTest {
         assertTrue(OrderFilter.DELIVERED.matches(done))
         assertTrue(OrderFilter.ALL.matches(done))
     }
+
+    // ---- truck sale mode ----
+
+    private fun truckDeps(rice: Int = 3, oil: Int = 0): FakeDeps = FakeDeps(
+        truck = FakeTruck(
+            ph.marbingo.field.data.TruckInfo(1, "Truck 1", "ABC 123", null, "open", "2026-10", rice + oil),
+            listOf(ph.marbingo.field.data.TruckStockLine(1, "Jasmine rice", "kg", rice, rice), ph.marbingo.field.data.TruckStockLine(2, "Cooking oil 1L", "btl", oil, oil)),
+        ),
+    )
+
+    @Test fun truckSaleStartsOnItemsWithoutAStoreAndOnlyListsTruckStock() {
+        val vm = NewOrderViewModel(truckDeps(), OrderMode.TRUCK_SALE)
+        assertEquals(OrderStep.ITEMS, vm.state.value.step)
+        val items = kotlinx.coroutines.runBlocking { vm.items.first { it.isNotEmpty() } }
+        assertEquals(listOf(1), items.map { it.id }) // oil has 0 on the truck
+    }
+
+    @Test fun truckSaleCapsQuantityAtAvailable() {
+        val vm = NewOrderViewModel(truckDeps(rice = 3), OrderMode.TRUCK_SALE)
+        vm.addItem(rice); vm.addItem(rice); vm.addItem(rice)
+        assertEquals(3, vm.state.value.cart.single().qty)
+        vm.addItem(rice) // would be the 4th
+        assertEquals(3, vm.state.value.cart.single().qty)
+        vm.increment(rice.id)
+        assertEquals(3, vm.state.value.cart.single().qty)
+        vm.setQty(rice.id, 50)
+        assertEquals(3, vm.state.value.cart.single().qty)
+        vm.setQty(rice.id, 2)
+        assertEquals(2, vm.state.value.cart.single().qty)
+    }
+
+    @Test fun truckSaleRejectsItemsNotOnTheTruck() {
+        val vm = NewOrderViewModel(truckDeps(rice = 3, oil = 0), OrderMode.TRUCK_SALE)
+        vm.addItem(oil)
+        assertTrue(vm.state.value.cart.isEmpty())
+    }
+
+    @Test fun truckSaleReviewsWithoutStoreAndSavesAsWalkIn() {
+        val deps = truckDeps()
+        val vm = NewOrderViewModel(deps, OrderMode.TRUCK_SALE)
+        vm.addItem(rice); vm.review()
+        assertEquals(OrderStep.REVIEW, vm.state.value.step) // no store needed
+        vm.save()
+        val id = vm.state.value.savedUuid!!
+        val sale = deps.truck.sales.value.single()
+        assertEquals(id, sale.clientUuid)
+        assertTrue(sale.isSale)
+        assertEquals(6200L, sale.total)
+        assertTrue(deps.orders.all.value.isEmpty()) // never an order
+    }
+
+    @Test fun truckSaleTrimsCartWhenStockShrinks() {
+        val deps = truckDeps(rice = 3)
+        val vm = NewOrderViewModel(deps, OrderMode.TRUCK_SALE)
+        vm.setQty(rice.id, 3); vm.addItem(rice); vm.addItem(rice)
+        deps.truck.stockLines.value = listOf(ph.marbingo.field.data.TruckStockLine(1, "Jasmine rice", "kg", 3, 1))
+        assertEquals(1, vm.state.value.cart.single().qty)
+        deps.truck.stockLines.value = emptyList()
+        assertTrue(vm.state.value.cart.isEmpty())
+    }
+
+    @Test fun orderFilterTruckSalesMatchesOnlySales() {
+        val sale = ph.marbingo.field.data.Order("s", null, "", "Walk-in customer", null, 1, OrderStatus.DELIVERED, SyncState.QUEUED, null, null, 100, emptyList(), null, null, isSale = true)
+        val order = sale.copy(isSale = false)
+        assertTrue(OrderFilter.TRUCK.matches(sale)); assertFalse(OrderFilter.TRUCK.matches(order))
+        assertFalse(OrderFilter.DELIVERED.matches(sale))
+    }
 }

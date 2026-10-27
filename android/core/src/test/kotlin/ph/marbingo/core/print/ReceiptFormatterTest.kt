@@ -94,4 +94,20 @@ class ReceiptFormatterTest {
     @Test fun longWordHardSplits() {
         assertEquals(listOf("abcdefghij", "klmno"), ReceiptFormatter.wrap("abcdefghijklmno", 10))
     }
+
+    @Test fun salesReceiptVariantKeepsOrderSlipUnchanged() {
+        val sale = data.copy(
+            ref = "S#7", storeName = "Walk-in customer", storeAddress = null, notes = null,
+            title = ReceiptData.SALES_TITLE, refLabel = "Receipt", footer = ReceiptData.SALES_FOOTER,
+        )
+        val rows = ReceiptFormatter.format(sale).map { it.text }
+        assertEquals("SALES RECEIPT", rows[1])
+        assertEquals("Receipt: S#7", rows[3])
+        assertEquals("Paid — thank you", rows.last())
+        assertTrue(rows.none { it.contains("ORDER SLIP") || it.contains("not yet delivered") })
+        assertTrue(ReceiptFormatter.format(sale).all { it.text.length <= 32 })
+        // The default (order slip) is unchanged.
+        assertEquals("ORDER SLIP", ReceiptFormatter.format(data).map { it.text }[1])
+        assertEquals("Order: #12", ReceiptFormatter.format(data).map { it.text }[3])
+    }
 }

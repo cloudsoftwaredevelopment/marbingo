@@ -33,10 +33,29 @@ router.get('/pull', requireRole('MANAGER', 'AGENT'), wrap(async (req, res) => {
 
   const trackingSchedule = await readSchedule(prisma);
 
+  // Truck agents (an AGENT assigned to an active truck) also get the truck's stock; everyone else null.
+  // Always the full stock list (nonzero rows), never incremental: the tablet replaces its copy.
+  let truck = null;
+  if (req.user.role === 'AGENT') {
+    const t = await prisma.truck.findUnique({ where: { agentId: req.user.id } });
+    if (t && t.active) {
+      const [period, stock] = await Promise.all([
+        prisma.truckPeriod.findFirst({ where: { truckId: t.id, status: { not: 'closed' } } }),
+        prisma.truckStock.findMany({ where: { truckId: t.id, qty: { not: 0 } }, orderBy: { itemId: 'asc' } }),
+      ]);
+      truck = {
+        id: t.id, name: t.name, plate: t.plate, driverName: t.driverName,
+        period: period ? { id: period.id, month: period.month, status: period.status } : null,
+        stock: stock.map((s) => ({ itemId: s.itemId, qty: s.qty })),
+      };
+    }
+  }
+
   res.json({
     serverTime,
     trackingSchedule,
     trackingConsentAt: req.user.trackingConsentAt,
+    truck,
     items: items.map(shapeItem).map((i) => ({
       id: i.id, name: i.name, sku: i.sku, unit: i.unit,
       categoryId: i.categoryId, category: i.category ? i.category.name : null,

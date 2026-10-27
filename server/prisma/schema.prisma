@@ -17,6 +17,7 @@ enum Role {
 enum Channel {
   counter
   field
+  truck
 }
 
 enum OrderStatus {
@@ -35,34 +36,43 @@ enum MoveReason {
   sale
   restock
   adjustment
+  truck_load
+  truck_return
 }
 
 model User {
-  id                Int             @id @default(autoincrement())
-  firstName         String          @map("first_name")
-  lastName          String          @map("last_name")
-  email             String          @unique
-  mobile            String?
-  address           String?
-  photoUrl          String?         @map("photo_url")
-  role              Role
-  employeeId        String          @unique @map("employee_id")
-  passwordHash      String          @map("password_hash")
-  active            Boolean         @default(true)
+  id                      Int             @id @default(autoincrement())
+  firstName               String          @map("first_name")
+  lastName                String          @map("last_name")
+  email                   String          @unique
+  mobile                  String?
+  address                 String?
+  photoUrl                String?         @map("photo_url")
+  role                    Role
+  employeeId              String          @unique @map("employee_id")
+  passwordHash            String          @map("password_hash")
+  active                  Boolean         @default(true)
   /// Bumped on password change / deactivation to revoke existing tokens.
-  tokenVersion      Int             @default(0) @map("token_version")
+  tokenVersion            Int             @default(0) @map("token_version")
   /// When the agent acknowledged the work-hours location tracking notice (Data Privacy Act).
-  trackingConsentAt DateTime?       @map("tracking_consent_at") @db.Timestamptz
-  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  itemsCreated      Item[]
-  sales             Sale[]
-  stockMoves        StockMove[]
-  customers         Customer[]      @relation("CustomerCreatedBy")
-  orders            Order[]         @relation("OrderAgent")
-  delivered         Order[]         @relation("OrderDeliveredBy")
-  locationPoints    LocationPoint[]
-  stops             AgentStop[]
-  locatedStores     Customer[]      @relation("CustomerLocatedBy")
+  trackingConsentAt       DateTime?       @map("tracking_consent_at") @db.Timestamptz
+  createdAt               DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  itemsCreated            Item[]
+  sales                   Sale[]
+  stockMoves              StockMove[]
+  customers               Customer[]      @relation("CustomerCreatedBy")
+  orders                  Order[]         @relation("OrderAgent")
+  delivered               Order[]         @relation("OrderDeliveredBy")
+  locationPoints          LocationPoint[]
+  stops                   AgentStop[]
+  locatedStores           Customer[]      @relation("CustomerLocatedBy")
+  truck                   Truck?
+  truckPeriodsOpened      TruckPeriod[]   @relation("PeriodOpenedBy")
+  truckPeriodsClosed      TruckPeriod[]   @relation("PeriodClosedBy")
+  truckTransfersRequested TruckTransfer[] @relation("TransferRequestedBy")
+  truckTransfersDecided   TruckTransfer[] @relation("TransferDecidedBy")
+  truckMoves              TruckMove[]
+  truckCounts             TruckCount[]
 
   @@map("users")
 }
@@ -77,26 +87,30 @@ model Category {
 
 /// Money fields are integer centavos.
 model Item {
-  id           Int         @id @default(autoincrement())
-  name         String
-  description  String?
-  categoryId   Int?        @map("category_id")
-  category     Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sku          String?     @unique
-  unit         String      @default("pc")
-  qtyOnHand    Int         @default(0) @map("qty_on_hand")
-  reorderLevel Int         @default(0) @map("reorder_level")
-  costPrice    Int?        @map("cost_price")
-  sellingPrice Int         @map("selling_price")
-  imageUrl     String?     @map("image_url")
-  createdById  Int?        @map("created_by")
-  createdBy    User?       @relation(fields: [createdById], references: [id])
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
-  saleLines    SaleLine[]
-  stockMoves   StockMove[]
-  orderLines   OrderLine[]
-  packs        ItemPack[]
+  id            Int                 @id @default(autoincrement())
+  name          String
+  description   String?
+  categoryId    Int?                @map("category_id")
+  category      Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sku           String?             @unique
+  unit          String              @default("pc")
+  qtyOnHand     Int                 @default(0) @map("qty_on_hand")
+  reorderLevel  Int                 @default(0) @map("reorder_level")
+  costPrice     Int?                @map("cost_price")
+  sellingPrice  Int                 @map("selling_price")
+  imageUrl      String?             @map("image_url")
+  createdById   Int?                @map("created_by")
+  createdBy     User?               @relation(fields: [createdById], references: [id])
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  saleLines     SaleLine[]
+  stockMoves    StockMove[]
+  orderLines    OrderLine[]
+  packs         ItemPack[]
+  truckStock    TruckStock[]
+  truckMoves    TruckMove[]
+  transferLines TruckTransferLine[]
+  countLines    TruckCountLine[]
 
   @@map("items")
 }
@@ -112,6 +126,7 @@ model Sale {
   customerId Int?       @map("customer_id")
   customer   Customer?  @relation(fields: [customerId], references: [id])
   order      Order?
+  truckSale  TruckSale?
 
   @@index([soldAt])
   @@map("sales")
@@ -306,4 +321,192 @@ model ItemPack {
   @@unique([itemId, packTypeId])
   @@unique([itemId, size])
   @@map("item_packs")
+}
+
+enum TruckMoveReason {
+  load
+  topup
+  return
+  sale
+  count_variance
+}
+
+enum PeriodStatus {
+  draft
+  open
+  counting
+  closed
+}
+
+enum TransferKind {
+  load
+  topup
+  return
+}
+
+enum TransferStatus {
+  pending
+  approved
+  rejected
+}
+
+/// A truck is a mobile warehouse. A truck agent is the AGENT assigned to it (agentId).
+model Truck {
+  id         Int             @id @default(autoincrement())
+  name       String
+  plate      String?
+  driverName String?         @map("driver_name")
+  agentId    Int?            @unique @map("agent_id")
+  agent      User?           @relation(fields: [agentId], references: [id])
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  stock      TruckStock[]
+  periods    TruckPeriod[]
+  transfers  TruckTransfer[]
+  moves      TruckMove[]
+  sales      TruckSale[]
+
+  @@map("trucks")
+}
+
+/// Materialised balance of truck_moves (qty == SUM(change)). May go negative after an offline oversell.
+model TruckStock {
+  truckId Int   @map("truck_id")
+  truck   Truck @relation(fields: [truckId], references: [id])
+  itemId  Int   @map("item_id")
+  item    Item  @relation(fields: [itemId], references: [id])
+  qty     Int
+
+  @@id([truckId, itemId])
+  @@map("truck_stock")
+}
+
+/// One month of a truck's life. At most one non-closed period per truck (partial unique index in the migration).
+model TruckPeriod {
+  id              Int             @id @default(autoincrement())
+  truckId         Int             @map("truck_id")
+  truck           Truck           @relation(fields: [truckId], references: [id])
+  /// Manila month, YYYY-MM.
+  month           String
+  status          PeriodStatus    @default(draft)
+  /// Beginning inventory [{itemId, qty}] set when the manager opens the period.
+  openingSnapshot Json?           @map("opening_snapshot")
+  openedAt        DateTime?       @map("opened_at") @db.Timestamptz
+  openedById      Int?            @map("opened_by")
+  openedBy        User?           @relation("PeriodOpenedBy", fields: [openedById], references: [id])
+  countStartedAt  DateTime?       @map("count_started_at") @db.Timestamptz
+  closedAt        DateTime?       @map("closed_at") @db.Timestamptz
+  closedById      Int?            @map("closed_by")
+  closedBy        User?           @relation("PeriodClosedBy", fields: [closedById], references: [id])
+  /// Frozen reconcile report, written at close.
+  report          Json?
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  transfers       TruckTransfer[]
+  moves           TruckMove[]
+  truckSales      TruckSale[]
+  count           TruckCount?
+
+  @@unique([truckId, month])
+  @@map("truck_periods")
+}
+
+model TruckTransfer {
+  id            Int                 @id @default(autoincrement())
+  truckId       Int                 @map("truck_id")
+  truck         Truck               @relation(fields: [truckId], references: [id])
+  periodId      Int?                @map("period_id")
+  period        TruckPeriod?        @relation(fields: [periodId], references: [id])
+  kind          TransferKind
+  status        TransferStatus      @default(pending)
+  note          String?
+  requestedById Int                 @map("requested_by")
+  requestedBy   User                @relation("TransferRequestedBy", fields: [requestedById], references: [id])
+  requestedAt   DateTime            @default(now()) @map("requested_at") @db.Timestamptz
+  decidedById   Int?                @map("decided_by")
+  decidedBy     User?               @relation("TransferDecidedBy", fields: [decidedById], references: [id])
+  decidedAt     DateTime?           @map("decided_at") @db.Timestamptz
+  lines         TruckTransferLine[]
+
+  @@index([truckId, status])
+  @@map("truck_transfers")
+}
+
+model TruckTransferLine {
+  id         Int           @id @default(autoincrement())
+  transferId Int           @map("transfer_id")
+  transfer   TruckTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  itemId     Int           @map("item_id")
+  item       Item          @relation(fields: [itemId], references: [id])
+  qty        Int
+
+  @@map("truck_transfer_lines")
+}
+
+/// Truck ledger. Every truck_stock change writes a row here.
+model TruckMove {
+  id       Int             @id @default(autoincrement())
+  truckId  Int             @map("truck_id")
+  truck    Truck           @relation(fields: [truckId], references: [id])
+  itemId   Int             @map("item_id")
+  item     Item            @relation(fields: [itemId], references: [id])
+  periodId Int             @map("period_id")
+  period   TruckPeriod     @relation(fields: [periodId], references: [id])
+  change   Int
+  reason   TruckMoveReason
+  at       DateTime        @default(now()) @db.Timestamptz
+  /// 'transfer' | 'sale' | 'period'
+  refType  String?         @map("ref_type")
+  refId    Int?            @map("ref_id")
+  byId     Int?            @map("by")
+  by       User?           @relation(fields: [byId], references: [id])
+
+  @@index([truckId, itemId])
+  @@index([periodId])
+  @@index([itemId, at])
+  @@map("truck_moves")
+}
+
+/// A sale made from the truck (offline on the tablet). The Sale row (channel truck) carries lines and total.
+model TruckSale {
+  id         Int         @id @default(autoincrement())
+  clientUuid String      @unique @map("client_uuid")
+  saleId     Int         @unique @map("sale_id")
+  sale       Sale        @relation(fields: [saleId], references: [id])
+  truckId    Int         @map("truck_id")
+  truck      Truck       @relation(fields: [truckId], references: [id])
+  periodId   Int         @map("period_id")
+  period     TruckPeriod @relation(fields: [periodId], references: [id])
+  /// Truck stock went below zero because of this sale.
+  oversold   Boolean     @default(false)
+  /// Synced after its own period closed (or before it opened), so posted to the current period.
+  late       Boolean     @default(false)
+  syncedAt   DateTime    @default(now()) @map("synced_at") @db.Timestamptz
+
+  @@index([periodId])
+  @@map("truck_sales")
+}
+
+model TruckCount {
+  id          Int              @id @default(autoincrement())
+  periodId    Int              @unique @map("period_id")
+  period      TruckPeriod      @relation(fields: [periodId], references: [id])
+  countedById Int              @map("counted_by")
+  countedBy   User             @relation(fields: [countedById], references: [id])
+  countedAt   DateTime         @default(now()) @map("counted_at") @db.Timestamptz
+  lines       TruckCountLine[]
+
+  @@map("truck_counts")
+}
+
+model TruckCountLine {
+  id      Int        @id @default(autoincrement())
+  countId Int        @map("count_id")
+  count   TruckCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  itemId  Int        @map("item_id")
+  item    Item       @relation(fields: [itemId], references: [id])
+  counted Int
+
+  @@unique([countId, itemId])
+  @@map("truck_count_lines")
 }

@@ -5,6 +5,7 @@ const { routeBetween } = require('../src/lib/osrm');
 const { manilaParts, haversine } = require('../src/lib/tracking');
 const { recomputeDay } = require('../src/routes/tracking');
 const { priceQty } = require('../src/lib/pricing');
+const truckOps = require('../src/lib/truckOps');
 
 const DAYS = 120;
 const MANILA_MS = 8 * 3600 * 1000;
@@ -165,9 +166,53 @@ async function seedTracks(agent, customers, now, todayUtc) {
   return { points: rows.length, days: days.length, stops };
 }
 
+// Truck 1 (Ramon's) with this month's period opened from a load of 8 items, a handful of truck sales since the
+// 1st and one pending top-up. Goes through truckOps so the ledgers are exactly what the API would write.
+async function seedTruck(users, items, customers, now) {
+  const truck = await prisma.truck.create({
+    data: { name: 'Truck 1', plate: 'NEG 4821', driverName: 'Pedro Alvarez', agentId: users.AGENT.id }
+  });
+  const period = await truckOps.createPeriod(truck.id);
+  const stocked = items.slice(0, 8);
+  const load = await truckOps.requestTransfer(truck.id, users.INVENTORY.id, {
+    kind: 'load', note: 'Month-start load',
+    lines: stocked.map((it) => ({ itemId: it.id, qty: Math.max(12, Math.min(Math.floor(it.qty * 0.2), 120)) }))
+  });
+  await truckOps.openPeriod(period.id, users.MANAGER.id);
+  // Open the period at the start of the Manila month so sales since the 1st are not flagged late.
+  const monthStart = new Date(Date.parse(period.month + '-01T00:00:00+08:00'));
+  await prisma.truckPeriod.update({ where: { id: period.id }, data: { openedAt: monthStart } });
+
+  const left = new Map(load.lines.map((l) => [l.itemId, l.qty]));
+  const span = Math.max(now.getTime() - monthStart.getTime() - 60000, 60000);
+  const user = await prisma.user.findUnique({ where: { id: users.AGENT.id } });
+  const sold = [];
+  for (let k = 0; k < 7; k++) {
+    const lines = [];
+    for (const itemId of [...left.keys()].sort(() => Math.random() - 0.5).slice(0, randInt(1, 3))) {
+      const qty = Math.min(left.get(itemId), randInt(2, 14));
+      if (qty > 0) { lines.push({ itemId, qty }); left.set(itemId, left.get(itemId) - qty); }
+    }
+    if (!lines.length) continue;
+    const r = await truckOps.recordTruckSale(truck, user, {
+      clientUuid: require('crypto').randomUUID(),
+      customerId: customers[randInt(0, customers.length - 1)].id,
+      soldAt: new Date(monthStart.getTime() + Math.floor(((k + Math.random()) / 7) * span)).toISOString(),
+      lines
+    }, new Map());
+    if (!r.ok) throw new Error('Truck sale seed failed: ' + r.error);
+    sold.push(r.sale);
+  }
+  const [a, b] = stocked.slice(2, 4);
+  await truckOps.requestTransfer(truck.id, users.INVENTORY.id, {
+    kind: 'topup', note: 'Running low', lines: [{ itemId: a.id, qty: 24 }, { itemId: b.id, qty: 12 }]
+  });
+  return { period, sales: sold.length, units: [...left.values()].reduce((n, q) => n + q, 0), total: sold.reduce((n, x) => n + x.total, 0) };
+}
+
 async function main() {
   const now = new Date();
-  await prisma.$executeRawUnsafe('TRUNCATE track_cache, agent_stops, location_points, order_lines, orders, customers, sale_lines, sales, stock_moves, item_packs, pack_types, items, categories, users, settings RESTART IDENTITY CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE truck_count_lines, truck_counts, truck_sales, truck_moves, truck_transfer_lines, truck_transfers, truck_periods, truck_stock, trucks, track_cache, agent_stops, location_points, order_lines, orders, customers, sale_lines, sales, stock_moves, item_packs, pack_types, items, categories, users, settings RESTART IDENTITY CASCADE');
 
   await prisma.setting.createMany({ data: [{ key: 'shop_name', value: 'Marbingo' }, { key: 'shop_mark', value: 'MB' }] });
 
@@ -398,11 +443,17 @@ async function main() {
     await prisma.item.update({ where: { id: it.id }, data: { qtyOnHand: it.qty } });
   }
 
+  const truckSeed = await seedTruck(users, items, customers, now);
   const track = await seedTracks(users.AGENT, customers, now, todayUtc);
 
   const gross = sales.reduce((s, x) => s + x.total, 0);
   const mism = await prisma.$queryRawUnsafe(
     'SELECT count(*)::int AS n FROM items i WHERE i.qty_on_hand <> (SELECT COALESCE(SUM(change),0) FROM stock_moves WHERE item_id = i.id)'
+  );
+  const truckMism = await prisma.$queryRawUnsafe(
+    `SELECT count(*)::int AS n FROM (SELECT truck_id, item_id FROM truck_stock UNION SELECT truck_id, item_id FROM truck_moves) k
+     WHERE COALESCE((SELECT qty FROM truck_stock s WHERE s.truck_id = k.truck_id AND s.item_id = k.item_id), 0)
+        <> COALESCE((SELECT SUM(change) FROM truck_moves m WHERE m.truck_id = k.truck_id AND m.item_id = k.item_id), 0)`
   );
   console.log('Seed complete');
   console.log(`  users: ${USERS.length} (password ${PASSWORD})`);
@@ -415,7 +466,8 @@ async function main() {
   console.log(`  orders: ${orderRows.length} (${delivered} delivered, ${orderRows.filter((o) => o.status === 'pending').length} pending, ${orderRows.filter((o) => o.status === 'cancelled').length} cancelled)`);
   console.log(`  gross: P${(gross / 100).toLocaleString('en-PH')} over ${DAYS} days (avg P${Math.round(gross / 100 / DAYS).toLocaleString('en-PH')}/day)`);
   console.log(`  tracking: ${track.points} GPS points over ${track.days} days, ${track.stops} stops, ${customers.filter((c) => c.lat == null).length} store(s) without a location`);
-  console.log(`  qty/ledger mismatches: ${mism[0].n}`);
+  console.log(`  truck: Truck 1 period ${truckSeed.period.month} open, ${truckSeed.sales} truck sales (P${(truckSeed.total / 100).toLocaleString('en-PH')}), ${truckSeed.units} units left, 1 pending top-up`);
+  console.log(`  qty/ledger mismatches: ${mism[0].n}, truck stock/ledger mismatches: ${truckMism[0].n}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

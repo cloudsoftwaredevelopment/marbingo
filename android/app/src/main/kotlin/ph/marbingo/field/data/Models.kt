@@ -77,10 +77,32 @@ data class Order(
     val lines: List<OrderLine>,
     val deliveredAt: Long?,
     val cancelledReason: String?,
+    /** True for a truck sale (a paid sales receipt) shown next to orders; false for a booked order. */
+    val isSale: Boolean = false,
 ) {
-    /** "#12" once synced, otherwise a short local reference like "L-3F9A". */
-    val reference: String get() = serverId?.let { "#$it" } ?: "L-" + clientUuid.take(4).uppercase()
+    /** "#12" once synced, otherwise a short local reference like "L-3F9A". Truck sales are prefixed "S". */
+    val reference: String get() = (if (isSale) "S" else "") + (serverId?.let { "#$it" } ?: "L-" + clientUuid.take(4).uppercase())
 }
+
+/** The truck an agent drives, with the selling state derived from the period. */
+data class TruckInfo(
+    val id: Int,
+    val name: String,
+    val plate: String?,
+    val driverName: String?,
+    /** draft | open | counting; null when the truck has no current period. */
+    val periodStatus: String?,
+    val periodMonth: String?,
+    /** Units on the truck after subtracting sales still waiting to sync. */
+    val unitsOnBoard: Int,
+) {
+    /** Sales are taken while the period is open (or being counted). A draft or missing period waits for the manager. */
+    val canSell: Boolean get() = periodStatus == "open" || periodStatus == "counting"
+    val waitingForApproval: Boolean get() = !canSell
+}
+
+/** One row of the Truck stock screen. */
+data class TruckStockLine(val itemId: Int, val name: String, val unit: String?, val onBoard: Int, val available: Int)
 
 /** An item in the cart. [priced] (cheapest packs + loose) is computed once per instance; copy() recomputes it. */
 data class CartLine(val item: Item, val qty: Int) {

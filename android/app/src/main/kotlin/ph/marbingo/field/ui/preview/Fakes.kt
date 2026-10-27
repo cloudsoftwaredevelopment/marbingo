@@ -84,6 +84,36 @@ class FakeOrders(private val stores: FakeStores = FakeStores()) : OrderRepositor
     }
 }
 
+class FakeTruck(
+    initial: TruckInfo? = null,
+    stock: List<TruckStockLine> = emptyList(),
+    private val catalog: List<Item> = Sample.items,
+) : TruckRepository {
+    val truck = MutableStateFlow(initial)
+    val stockLines = MutableStateFlow(stock)
+    val sales = MutableStateFlow<List<Order>>(emptyList())
+    var placeError: Exception? = null
+    override fun observeTruck(): Flow<TruckInfo?> = truck
+    override fun observeAvailable(): Flow<Map<Int, Int>> = stockLines.map { l -> l.associate { it.itemId to it.available } }
+    override fun observeStock(): Flow<List<TruckStockLine>> = stockLines
+    override fun searchAvailable(query: String): Flow<List<Item>> = stockLines.map { l ->
+        l.filter { it.available > 0 }.mapNotNull { sl -> catalog.firstOrNull { it.id == sl.itemId }?.copy(qtyOnHand = sl.available) }
+            .filter { query.isBlank() || it.name.contains(query, true) }
+    }
+    override fun recent(limit: Int): Flow<List<Order>> = sales
+    override fun observe(clientUuid: String): Flow<Order?> = sales.map { l -> l.firstOrNull { it.clientUuid == clientUuid } }
+    override suspend fun placeSale(storeClientUuid: String?, lines: List<CartLine>): String {
+        placeError?.let { throw it }
+        val id = UUID.randomUUID().toString()
+        val ls = lines.map { OrderLine(it.item.id, it.item.name, it.item.unit, it.qty, it.item.sellingPrice, it.total, null, it.priced.parts) }
+        sales.value = listOf(
+            Order(id, null, storeClientUuid.orEmpty(), WALK_IN, Sample.session.name, System.currentTimeMillis(), OrderStatus.DELIVERED,
+                SyncState.QUEUED, null, null, ls.sumOf { it.lineTotal }, ls, null, null, isSale = true),
+        ) + sales.value
+        return id
+    }
+}
+
 class FakeSync(initial: SyncStatus = SyncStatus(null, 0, 0, false, null)) : SyncRepository {
     val state = MutableStateFlow(initial)
     var syncCalls = 0
@@ -124,6 +154,7 @@ class FakeDeps(
     override val catalog: FakeCatalog = FakeCatalog(),
     override val stores: FakeStores = FakeStores(),
     override val orders: FakeOrders = FakeOrders(stores),
+    override val truck: FakeTruck = FakeTruck(),
     override val sync: FakeSync = FakeSync(),
     override val printer: FakePrinter = FakePrinter(),
     override val tracking: FakeTracking = FakeTracking(),

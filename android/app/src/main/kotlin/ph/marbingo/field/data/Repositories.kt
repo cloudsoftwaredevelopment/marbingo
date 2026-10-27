@@ -62,3 +62,18 @@ interface PrinterRepository {
     suspend fun printOrder(order: Order, session: Session)
     suspend fun printTest(session: Session)
 }
+
+/** Truck sales for agents assigned to a truck. [observeTruck] emits null for booking agents, so the UI shows nothing new. */
+interface TruckRepository {
+    fun observeTruck(): Flow<TruckInfo?>
+    /** itemId -> units still sellable (server stock minus queued, unsynced sales). Items not on the truck are absent. */
+    fun observeAvailable(): Flow<Map<Int, Int>>
+    fun observeStock(): Flow<List<TruckStockLine>>
+    /** Items on the truck with available > 0 (Item.qtyOnHand holds the available qty). */
+    fun searchAvailable(query: String): Flow<List<Item>>
+    /** Truck sales as Orders (isSale = true, status DELIVERED) so lists and receipts can share the order UI. */
+    fun recent(limit: Int = 100): Flow<List<Order>>
+    fun observe(clientUuid: String): Flow<Order?>
+    /** Prices with Pricing.priceQty, caps at what is available, saves QUEUED, schedules a sync, returns clientUuid. Walk-in when no store. */
+    suspend fun placeSale(storeClientUuid: String?, lines: List<CartLine>): String
+}

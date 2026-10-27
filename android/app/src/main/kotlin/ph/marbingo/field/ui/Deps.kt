@@ -14,6 +14,7 @@ interface UiDeps {
     val catalog: CatalogRepository
     val stores: StoreRepository
     val orders: OrderRepository
+    val truck: TruckRepository
     val sync: SyncRepository
     val printer: PrinterRepository
     val tracking: TrackingRepository
@@ -27,6 +28,7 @@ class GraphDeps(context: Context) : UiDeps {
     override val catalog get() = graph.catalog
     override val stores get() = graph.stores
     override val orders get() = graph.orders
+    override val truck get() = graph.truck
     override val sync get() = graph.sync
     override val printer get() = graph.printer
     override val tracking get() = graph.tracking

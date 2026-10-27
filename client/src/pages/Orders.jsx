@@ -16,7 +16,7 @@ const fmtDT = (iso) => (iso ? dtFmt.format(new Date(iso)) : '—');
 const fullName = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ') : '—');
 const itemCount = (o) => o.lines.length;
 
-function useModal(onClose) {
+export function useModal(onClose) {
   const ref = useRef(null);
   useEffect(() => {
     const prev = document.activeElement;
