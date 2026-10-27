@@ -43,7 +43,7 @@ class MigrationTest {
 
     private fun open(): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, name)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build().also { db = it }
 
@@ -101,7 +101,7 @@ class MigrationTest {
             columns("location_points"),
         )
         assertTrue(columns("tracking_meta").containsAll(listOf("scheduleDays", "consentAt", "consentSynced", "lastFixAt", "lastUploadAt")))
-        assertEquals(4, sql.version)
+        assertEquals(5, sql.version)
     }
 
     private fun createV2() {
@@ -125,7 +125,7 @@ class MigrationTest {
         createV2()
         val d = open()
         val sql = d.openHelper.writableDatabase
-        assertEquals(4, sql.version)
+        assertEquals(5, sql.version)
 
         // Queued and synced orders with their lines are untouched; breakdown columns start null.
         val queued = d.orders().pendingForPush().single()
@@ -181,7 +181,7 @@ class MigrationTest {
         createV3()
         val d = open()
         val sql = d.openHelper.writableDatabase
-        assertEquals(4, sql.version)
+        assertEquals(5, sql.version)
 
         // Nothing existing is touched (a destructive migration would have wiped these).
         val order = d.orders().pendingForPush().single()
@@ -211,6 +211,21 @@ class MigrationTest {
         )
         assertEquals(6, d.truck().stockFor(1)!!.available)
         assertEquals(1, d.truck().waitingCountNow())
+    }
+
+    @Test fun v4ToV5KeepsQueuedWorkAndAddsTheDeviceEventOutbox() = runBlocking {
+        createV3() // opened through 3 -> 4 -> 5; Room validates the migrated schema against the entities
+        val d = open()
+        val sql = d.openHelper.writableDatabase
+        assertEquals("o-1", d.orders().pendingForPush().single().order.clientUuid)
+        assertEquals("2026-10-25T00:00:00Z", d.syncMeta().get()!!.since)
+        fun columns(table: String): Set<String> = sql.query("PRAGMA table_info($table)").use { c ->
+            buildSet { while (c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name"))) }
+        }
+        assertEquals(setOf("id", "type", "at", "battery", "estimated", "shiftMs", "uploaded"), columns("device_events"))
+        assertTrue(d.deviceEvents().insert(DeviceEventEntity(type = "power_off", at = 1000, battery = 40, estimated = true)) > 0)
+        assertEquals(-1L, d.deviceEvents().insert(DeviceEventEntity(type = "power_off", at = 1000))) // replay ignored
+        assertEquals(1, d.deviceEvents().pending(10).size)
     }
 
     @Test fun freshV4HasTheSameTruckShapeAsTheMigration() = runBlocking {

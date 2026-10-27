@@ -4,6 +4,7 @@ import api, { apiError } from '../lib/api';
 import FilterPanel from './map/FilterPanel';
 import MapView from './map/MapView';
 import { Playback, Summary, Timeline, VisitsHere } from './map/Timeline';
+import DeviceLog, { DeviceAlerts } from './map/DeviceLog';
 import { agentName, fmtYmd, hasLoc, todayYmd } from './map/util';
 import '../styles/forms.css';
 import '../styles/map.css';
@@ -23,6 +24,7 @@ export default function EcosystemMap() {
   const [unplaced, setUnplaced] = useState([]);
   const [track, setTrack] = useState(null);
   const [stops, setStops] = useState([]);
+  const [deviceLog, setDeviceLog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -88,6 +90,22 @@ export default function EcosystemMap() {
     return () => { live = false; };
   }, [f.agentId, f.date, f.timeFrom, f.timeTo, f.customerId, f.point, f.radius, f.minMinutes]);
 
+  // Device log for the selected agent-day; refreshed with the live list so open gaps keep growing.
+  useEffect(() => {
+    setDeviceLog(null);
+    if (!f.agentId) return undefined;
+    let live = true;
+    const load = () => {
+      if (document.hidden) return;
+      api.get('/tracking/device-log', { params: { agentId: f.agentId, date: f.date } })
+        .then((r) => { if (live) setDeviceLog(r.data); })
+        .catch(() => { if (live) setDeviceLog(null); });
+    };
+    load();
+    const t = f.date === todayYmd() ? setInterval(load, 60000) : null;
+    return () => { live = false; if (t) clearInterval(t); };
+  }, [f.agentId, f.date]);
+
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 4000); };
 
   async function onMapClick(lat, lng) {
@@ -150,7 +168,9 @@ export default function EcosystemMap() {
             {!loading && !single && !stops.length && !error && <p className="hint">No stops found for {fmtYmd(f.date)} with these filters.</p>}
             {single && track && track.snapped === false && <p className="hint">Showing raw GPS trail (road snapping unavailable)</p>}
           </div>
+          {!single && <DeviceAlerts agents={agents} onPick={(id) => set({ agentId: String(id) })} />}
           {single && track && <Summary track={track} />}
+          {single && <DeviceLog log={deviceLog} />}
           {single && track && <Playback track={track} onPos={setPlayPos} />}
           {single && <Timeline stops={stops} track={track} onFocus={doFocus} />}
           {!single && hasFilter && <VisitsHere stops={stops} />}

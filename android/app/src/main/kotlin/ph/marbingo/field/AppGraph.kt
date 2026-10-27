@@ -32,19 +32,21 @@ class AppGraph(context: Context) {
     /** Outlives screens and services: final uploads and receiver work run here. */
     val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     internal val uploader: LocationUploader by lazy { LocationUploader(api, db) }
+    internal val monitor: DeviceMonitor by lazy { DeviceMonitor(db, AndroidDeviceProbe(appContext), PrefsMonitorStore(appContext)) }
 
     val tracking: TrackingRepository by lazy {
         TrackingRepositoryImpl(
             db, api, tokenStore,
             AndroidPermissionChecker(appContext), AndroidServiceController(appContext), AndroidAlarmScheduler(appContext),
+            monitor = monitor,
         )
     }
     val locator: DeviceLocator by lazy { FusedDeviceLocator(appContext) }
 
     private val authHooks = object : AuthHooks {
-        override suspend fun afterSignIn() = tracking.ensureScheduled()
+        override suspend fun afterSignIn() { monitor.reset(); tracking.ensureScheduled() }
         override suspend fun beforeSignOut() { uploader.uploadPending() } // best effort: the outbox is wiped next
-        override suspend fun afterSignOut() = tracking.ensureScheduled() // no session: stops the service, cancels the alarm
+        override suspend fun afterSignOut() { monitor.reset(); tracking.ensureScheduled() } // no session: stops the service, cancels the alarm
     }
 
     val auth: AuthRepository by lazy { AuthRepositoryImpl(api, tokenStore, db, syncEngine, scheduler, authHooks) }

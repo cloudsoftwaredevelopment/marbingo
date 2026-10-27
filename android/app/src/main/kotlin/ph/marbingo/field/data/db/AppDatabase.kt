@@ -10,14 +10,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * The DB holds queued orders, so destructive migration is never allowed: every schema change
  * ships a real Migration (see [MIGRATION_1_2], [MIGRATION_2_3]). Version 2 adds store locations and the GPS outbox;
- * version 3 adds pack pricing; version 4 adds the truck tables.
+ * version 3 adds pack pricing; version 4 adds the truck tables; version 5 adds the device-log outbox.
  */
 @Database(
     entities = [ItemEntity::class, CustomerEntity::class, OrderEntity::class, OrderLineEntity::class, SyncMetaEntity::class,
         LocationPointEntity::class, TrackingMetaEntity::class, ItemPackEntity::class,
         TruckMetaEntity::class, TruckStockEntity::class, TruckSaleEntity::class, TruckSaleLineEntity::class,
+        DeviceEventEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,11 +29,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun locationPoints(): LocationPointDao
     abstract fun trackingMeta(): TrackingMetaDao
     abstract fun truck(): TruckDao
+    abstract fun deviceEvents(): DeviceEventDao
 
     companion object {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "marbingo_field.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }
@@ -111,5 +113,17 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 "ON UPDATE NO ACTION ON DELETE CASCADE )"
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_truck_sale_lines_saleClientUuid` ON `truck_sale_lines` (`saleClientUuid`)")
+    }
+}
+
+/** v4 -> v5 (device log): the device_events outbox only. Nothing existing is touched. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `device_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, " +
+                "`at` INTEGER NOT NULL, `battery` INTEGER, `estimated` INTEGER NOT NULL, `shiftMs` INTEGER, `uploaded` INTEGER NOT NULL)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_device_events_type_at` ON `device_events` (`type`, `at`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_device_events_uploaded` ON `device_events` (`uploaded`)")
     }
 }

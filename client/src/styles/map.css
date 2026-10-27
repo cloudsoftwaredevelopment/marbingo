@@ -53,3 +53,13 @@
   .mp-panel { max-height: none; min-height: 0; overflow: visible; }
   .mp-mapbox { position: relative; top: 0; height: 60vh; min-height: 60vh; }
 }
+
+/* Device log (map/DeviceLog.jsx): gap tones — bad = no location, warn = location blocked, off = offline only. */
+.dl-bar { position: relative; height: 14px; border-radius: 7px; background: var(--accent-tint); overflow: hidden; }
+.dl-seg { position: absolute; top: 0; bottom: 0; }
+.dl-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; font-size: 14px; }
+.dl-dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; }
+.dl-seg.bad, .dl-dot.bad { background: var(--danger); }
+.dl-seg.warn, .dl-dot.warn { background: var(--warn); }
+.dl-seg.off, .dl-dot.off { background: #2F6FA3; }
+.dl-seg.muted, .dl-dot.muted { background: var(--muted); }

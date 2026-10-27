@@ -64,6 +64,7 @@ model User {
   orders                  Order[]         @relation("OrderAgent")
   delivered               Order[]         @relation("OrderDeliveredBy")
   locationPoints          LocationPoint[]
+  deviceEvents            DeviceEvent[]
   stops                   AgentStop[]
   locatedStores           Customer[]      @relation("CustomerLocatedBy")
   truck                   Truck?
@@ -259,6 +260,21 @@ model LocationPoint {
 
   @@unique([agentId, recordedAt])
   @@map("location_points")
+}
+
+/// Tablet state changes during work hours (power, app, mobile data, GPS, …): docs/tracking-api.md "Device log".
+model DeviceEvent {
+  id         BigInt   @id @default(autoincrement())
+  agentId    Int      @map("agent_id")
+  agent      User     @relation(fields: [agentId], references: [id])
+  type       String /// power_off, data_on, … (lib/deviceEvents.js TYPES)
+  at         DateTime @db.Timestamptz
+  detail     Json?
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz
+
+  @@unique([agentId, type, at])
+  @@index([agentId, at])
+  @@map("device_events")
 }
 
 /// A detected stop (derived from location_points). Kept beyond the 12-month point retention.

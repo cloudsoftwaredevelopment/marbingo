@@ -129,7 +129,9 @@ class OnboardingViewModel(
 
         fun noticeText(s: TrackingSchedule) =
             "While you're on duty (${s.fullLabel()}) this tablet shares its location with the shop so managers can see store visits and routes. " +
-                "Location is not collected outside these hours. History is kept for 12 months."
+                "It also records when the tablet is switched off or restarted, when this app is stopped, and when mobile data, " +
+                "airplane mode, GPS or fake-location apps are turned on or off. " +
+                "Location and device status are not collected outside these hours. History is kept for 12 months."
     }
 }
 

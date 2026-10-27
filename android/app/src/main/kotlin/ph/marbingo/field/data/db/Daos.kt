@@ -112,6 +112,16 @@ interface LocationPointDao {
 }
 
 @Dao
+interface DeviceEventDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(e: DeviceEventEntity): Long
+    @Query("SELECT * FROM device_events WHERE uploaded = 0 ORDER BY at LIMIT :limit")
+    suspend fun pending(limit: Int): List<DeviceEventEntity>
+    @Query("UPDATE device_events SET uploaded = 1 WHERE id IN (:ids)") suspend fun markUploaded(ids: List<Long>)
+    @Query("DELETE FROM device_events WHERE uploaded = 1 AND at < :before") suspend fun pruneUploaded(before: Long): Int
+    @Query("SELECT * FROM device_events ORDER BY at, id") suspend fun all(): List<DeviceEventEntity>
+}
+
+@Dao
 interface TrackingMetaDao {
     @Query("SELECT * FROM tracking_meta WHERE id = 1") fun observe(): Flow<TrackingMetaEntity?>
     @Query("SELECT * FROM tracking_meta WHERE id = 1") suspend fun get(): TrackingMetaEntity?

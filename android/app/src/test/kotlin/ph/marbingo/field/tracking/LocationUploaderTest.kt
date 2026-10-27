@@ -20,6 +20,7 @@ import ph.marbingo.core.model.UserDto
 import ph.marbingo.core.net.ApiClient
 import ph.marbingo.core.net.InMemoryTokenStore
 import ph.marbingo.field.data.db.AppDatabase
+import ph.marbingo.field.data.db.DeviceEventEntity
 import ph.marbingo.field.data.db.LocationPointEntity
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -30,6 +31,8 @@ class LocationUploaderTest {
     private lateinit var tokens: InMemoryTokenStore
     private lateinit var uploader: LocationUploader
     private val bodies = CopyOnWriteArrayList<JSONObject>()
+    private val eventBodies = CopyOnWriteArrayList<JSONObject>()
+    @Volatile private var eventsResponse: () -> MockResponse = { MockResponse().setBody("""{"accepted":1,"duplicates":0,"rejected":0}""") }
     @Volatile private var pointsResponse: () -> MockResponse = { MockResponse().setBody("""{"accepted":1,"duplicates":0,"rejected":0}""") }
     @Volatile private var refreshResponse: () -> MockResponse = { MockResponse().setBody("""{"accessToken":"a2","refreshToken":"r2"}""") }
     private val clock = 10L * 24 * 60 * 60 * 1000 // "now", ten days after the epoch
@@ -48,6 +51,11 @@ class LocationUploaderTest {
                     paths += "points"
                     bodies += JSONObject(request.body.readUtf8())
                     pointsResponse()
+                }
+                "/api/tracking/events" -> {
+                    paths += "events"
+                    eventBodies += JSONObject(request.body.readUtf8())
+                    eventsResponse()
                 }
                 "/api/tracking/consent" -> {
                     paths += "consent"
@@ -104,6 +112,33 @@ class LocationUploaderTest {
         assertEquals(8.5, first.getDouble("accuracy"), 1e-9)
         assertEquals(82, first.getInt("battery"))
         assertEquals(270.0, first.getDouble("bearing"), 1e-9)
+    }
+
+    @Test fun deviceEventsAreSentAfterPointsWithTheDeviceClock() = runBlocking {
+        seed(1)
+        db.deviceEvents().insert(DeviceEventEntity(type = "power_off", at = 1_000_000_000L, battery = 64, estimated = true))
+        db.deviceEvents().insert(DeviceEventEntity(type = "data_off", at = 1_000_060_000L))
+        assertEquals(LocationUploader.Outcome.Uploaded(1), uploader.uploadPending())
+        assertEquals(listOf("points", "events"), paths.toList())
+        val body = eventBodies.single()
+        assertEquals("1970-01-11T00:00:00Z", body.getString("sentAt"))
+        val list = body.getJSONArray("events")
+        assertEquals("power_off", list.getJSONObject(0).getString("type"))
+        assertEquals("1970-01-12T13:46:40Z", list.getJSONObject(0).getString("at"))
+        val detail = list.getJSONObject(0).getJSONObject("detail")
+        assertEquals(64, detail.getInt("battery")); assertTrue(detail.getBoolean("estimated")); assertFalse(detail.has("shiftMs"))
+        assertFalse(list.getJSONObject(1).has("detail"))
+        assertTrue(db.deviceEvents().pending(10).isEmpty())
+    }
+
+    @Test fun deviceEventsStayQueuedOnServerError() = runBlocking {
+        db.deviceEvents().insert(DeviceEventEntity(type = "gps_off", at = 1_000_000_000L))
+        eventsResponse = { MockResponse().setResponseCode(503) }
+        assertTrue(uploader.uploadPending() is LocationUploader.Outcome.Retry)
+        assertEquals(1, db.deviceEvents().pending(10).size)
+        eventsResponse = { MockResponse().setBody("""{"accepted":1}""") }
+        assertEquals(LocationUploader.Outcome.Uploaded(0), uploader.uploadPending())
+        assertTrue(db.deviceEvents().pending(10).isEmpty())
     }
 
     @Test fun nothingPendingMakesNoRequest() = runBlocking {

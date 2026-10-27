@@ -3,17 +3,24 @@ package ph.marbingo.field.tracking
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ph.marbingo.core.model.DeviceEventDetailDto
+import ph.marbingo.core.model.DeviceEventDto
+import ph.marbingo.core.model.DeviceEventsRequest
 import ph.marbingo.core.model.TrackingPointDto
 import ph.marbingo.core.model.TrackingPointsRequest
 import ph.marbingo.core.net.ApiErrors
 import ph.marbingo.core.net.MarbingoApi
 import ph.marbingo.field.data.Iso
 import ph.marbingo.field.data.db.AppDatabase
+import ph.marbingo.field.data.db.DeviceEventEntity
 import ph.marbingo.field.data.db.LocationPointEntity
 import retrofit2.HttpException
 import java.io.IOException
 
-/** Sends the GPS outbox to POST /api/tracking/points in batches of at most [BATCH]. Plain class, tested against MockWebServer. */
+/**
+ * Sends the GPS outbox to POST /api/tracking/points and the device-log outbox to POST /api/tracking/events,
+ * in batches of at most [BATCH]. Plain class, tested against MockWebServer.
+ */
 class LocationUploader(
     private val api: MarbingoApi,
     private val db: AppDatabase,
@@ -65,6 +72,7 @@ class LocationUploader(
                 if (batch.size < BATCH) break
             }
             dao.pruneUploaded(now() - KEEP_UPLOADED_MS)
+            uploadEvents()
             Outcome.Uploaded(sent)
         } catch (e: CancellationException) {
             throw e
@@ -85,6 +93,30 @@ class LocationUploader(
             Outcome.Retry(msg)
         }
     }
+
+    /** Same rules as the points: handled batches are marked, a batch the server calls invalid is dropped. */
+    private suspend fun uploadEvents() {
+        val dao = db.deviceEvents()
+        while (true) {
+            val batch = dao.pending(BATCH)
+            if (batch.isEmpty()) break
+            try {
+                api.postDeviceEvents(DeviceEventsRequest(batch.map { it.toDto() }, sentAt = Iso.format(now())))
+            } catch (e: HttpException) {
+                if (e.code() !in DROP_CODES) throw e
+                db.trackingMeta().saveError(ApiErrors.message(e))
+            }
+            dao.markUploaded(batch.map { it.id })
+            if (batch.size < BATCH) break
+        }
+        dao.pruneUploaded(now() - KEEP_UPLOADED_MS)
+    }
+
+    private fun DeviceEventEntity.toDto() = DeviceEventDto(
+        type = type, at = Iso.format(at),
+        detail = if (battery == null && !estimated && shiftMs == null) null
+        else DeviceEventDetailDto(battery = battery, estimated = estimated.takeIf { it }, shiftMs = shiftMs),
+    )
 
     private fun LocationPointEntity.toDto() = TrackingPointDto(
         recordedAt = Iso.format(recordedAt), lat = lat, lng = lng,

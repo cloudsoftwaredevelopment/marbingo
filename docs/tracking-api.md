@@ -30,6 +30,42 @@ The setting key is `tracking_schedule`. Its default is Mon–Sat 07:00–18:00, 
 - The agent is always `req.user`.
 - After the insert, stops for the affected agent-days are recomputed. This is debounced to at most once every 60 s per agent-day.
 
+## Device log
+
+The tablet records **state changes** during work hours and uploads them like points (queued offline, so data switched off only delays them). The server pairs each "off" event with the next "on" event of the same kind to make **gaps**, and clips them to the day's work window.
+
+| kind | opens / closes | meaning |
+|---|---|---|
+| `power` | `power_off` / `power_on` | Tablet off. `power_off` has `detail.estimated: true` when no shutdown broadcast was seen (battery pulled/died, crash): its time is then the last heartbeat (±1 min). `detail.battery` ≤ 5 → battery died. |
+| `app` | `app_stopped` / `app_started` | The tracking service died without stopping on the same boot (force-stop, or the phone killed it) for > 3 min |
+| `mock` | `mock_on` / `mock_off` | Fixes came from a fake-GPS app (those fixes are not stored) |
+| `gps` | `gps_off` / `gps_on` | Location turned off in quick settings |
+| `permission` | `permission_revoked` / `permission_granted` | Precise "all the time" location removed |
+| `airplane` | `airplane_on` / `airplane_off` | Airplane mode |
+| `data` | `data_off` / `data_on` | Mobile data switched off (only on tablets with a SIM) |
+| `signal` | `no_signal` / `signal_back` | No internet with data on; gaps < 2 min are ignored |
+| `clock` | `auto_time_off` / `auto_time_on` | Automatic date/time turned off |
+
+One-off events: `clock_changed` (`detail.shiftMs`, the clock was set by hand) and `clock_skew` (server-made, see below).
+"No location" time = union of `power`, `app`, `mock`, `gps`, `permission`. "Offline" time = union of `data`, `airplane`, `signal` (GPS is still recorded then).
+
+`POST /api/tracking/events` (AGENT, MANAGER; consent required like points)
+```jsonc
+{ "events": [ { "type": "power_off", "at": "…", "detail": { "battery": 64, "estimated": true } } ],   // at most 500
+  "sentAt": "…" }   // device clock at send time
+```
+→ `{ accepted, duplicates, rejected }`. Rejected: unknown type, bad time, > 10 min in the future, > 30 days old. Duplicates: same agent + type + `at`. `detail` keeps only `battery`, `estimated`, `shiftMs`. When `sentAt` differs from the server clock by ≥ 5 min the server stores a `clock_skew` event (`detail.shiftMs`, device ahead > 0), at most once an hour.
+
+`GET /api/tracking/device-log?agentId=4&date=YYYY-MM-DD` (MANAGER)
+```jsonc
+{ "agentId": 4, "date": "2026-10-27", "workStart": "…" | null, "workEnd": "…" | null,   // null on a day off
+  "gaps": [ { "kind": "power", "startedAt": "…", "endedAt": "…", "open": false, "durationS": 8580,
+              "detail": { "battery": 64, "estimated": true } } ],   // open = still going (endedAt = now)
+  "instants": [ { "type": "clock_changed", "at": "…", "detail": { "shiftMs": -3600000 } } ],
+  "summary": { "noLocationS": 8580, "offlineS": 2400, "byKind": { "power": 8580, "data": 2400 } } }
+```
+Device events are purged with the points after 365 days. Logic: `server/src/lib/deviceEvents.js` (pure, tested).
+
 ## Live
 
 `GET /api/tracking/live` (MANAGER) returns every active AGENT:
@@ -37,7 +73,9 @@ The setting key is `tracking_schedule`. Its default is Mon–Sat 07:00–18:00, 
 [ { "agent": { "id": 4, "firstName": "Ramon", "lastName": "Dela Cruz" },
     "status": "tracking",          // tracking (last point < 5 min) | signal_lost (in work hours, stale) | off_duty
     "last": { "recordedAt", "lat", "lng", "accuracy", "speed", "battery" } | null,
-    "todayStops": 4, "todayDistanceM": 18250 } ]
+    "todayStops": 4, "todayDistanceM": 18250,
+    "alert": { "kind": "data", "since": "…", "detail": null } | null,   // most serious open device-log gap (not signal), in work hours
+    "todayNoLocationS": 0, "todayOfflineS": 600 } ]
 ```
 
 ## Track
@@ -76,7 +114,7 @@ The customer JSON (see field-api.md) gains `lat`, `lng`, `locationSource` (`gps|
 
 ## Roles
 
-The map endpoints (`live`, `track`, `stops`, `visits`) are MANAGER only. Upload and consent are for AGENT (and MANAGER, for testing). Every other role gets 403.
+The map endpoints (`live`, `track`, `stops`, `visits`, `device-log`) are MANAGER only. Upload (points, events) and consent are for AGENT (and MANAGER, for testing). Every other role gets 403.
 
 ## Retention
 

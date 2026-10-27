@@ -4,12 +4,14 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { fail, wrap } = require('../lib/http');
 const { parseIso, startOfDay } = require('../lib/periods');
 const T = require('../lib/tracking');
+const D = require('../lib/deviceEvents');
 const { matchTrack } = require('../lib/osrm');
 
 router.use(authenticate);
 
 const DAY_MS = 86400000;
 const MAX_POINTS = 500;
+const LOOKBACK_MS = 7 * DAY_MS; // a gap may have opened before the day being read
 const RECOMPUTE_MS = 60000;
 const uploaders = requireRole('AGENT', 'MANAGER');
 const manager = requireRole('MANAGER');
@@ -122,6 +124,29 @@ router.post('/points', uploaders, wrap(async (req, res) => {
   res.json({ accepted: created, duplicates: valid.length - created, rejected: list.length - valid.length });
 }));
 
+router.post('/events', uploaders, wrap(async (req, res) => {
+  const list = req.body && req.body.events;
+  if (!Array.isArray(list)) return fail(res, 400, 'events must be a list.');
+  if (!req.user.trackingConsentAt) return fail(res, 403, 'Accept the location sharing notice in the app first.');
+  if (list.length > MAX_POINTS) return fail(res, 400, `Send at most ${MAX_POINTS} events at a time.`);
+  const now = new Date();
+  const valid = [];
+  for (const raw of list) {
+    const r = D.validateEvent(raw, now);
+    if (r.event) valid.push({ ...r.event, agentId: req.user.id, detail: r.event.detail ?? undefined });
+  }
+  // The tablet's clock is off: note it (at most hourly), since its timestamps are then off too.
+  const skew = D.clockSkew(req.body.sentAt, now);
+  if (skew !== null) {
+    const recent = await prisma.deviceEvent.findFirst({
+      where: { agentId: req.user.id, type: 'clock_skew', at: { gt: new Date(now.getTime() - 3600000) } }, select: { id: true },
+    });
+    if (!recent) await prisma.deviceEvent.create({ data: { agentId: req.user.id, type: 'clock_skew', at: now, detail: { shiftMs: skew } } });
+  }
+  const created = valid.length ? (await prisma.deviceEvent.createMany({ data: valid, skipDuplicates: true })).count : 0;
+  res.json({ accepted: created, duplicates: valid.length - created, rejected: list.length - valid.length });
+}));
+
 router.post('/consent', uploaders, wrap(async (req, res) => {
   await prisma.user.updateMany({ where: { id: req.user.id, trackingConsentAt: null }, data: { trackingConsentAt: new Date() } });
   const u = await prisma.user.findUnique({ where: { id: req.user.id }, select: { trackingConsentAt: true } });
@@ -141,13 +166,15 @@ router.get('/live', manager, wrap(async (req, res) => {
   for (const a of agents) {
     await ensureFresh(a.id, day);
     const where = { agentId: a.id, recordedAt: { gte: dayStart(day), lt: dayEnd(day) } };
-    const [last, points, stops] = await Promise.all([
+    const [last, points, stops, events] = await Promise.all([
       prisma.locationPoint.findFirst({ where: { agentId: a.id }, orderBy: { recordedAt: 'desc' } }),
       prisma.locationPoint.findMany({
         where, orderBy: { recordedAt: 'asc' }, select: { recordedAt: true, lat: true, lng: true, accuracy: true },
       }),
       prisma.agentStop.findMany({ where: { agentId: a.id, day } }),
+      prisma.deviceEvent.findMany({ where: { agentId: a.id, at: { gte: new Date(dayStart(day).getTime() - LOOKBACK_MS) } } }),
     ]);
+    const log = D.dayLog(events, { day, schedule, now });
     let status = 'off_duty';
     if (last && now - last.recordedAt < 300000) status = 'tracking';
     else if (T.inSchedule(now, schedule)) status = 'signal_lost';
@@ -159,9 +186,32 @@ router.get('/live', manager, wrap(async (req, res) => {
       } : null,
       todayStops: stops.length,
       todayDistanceM: T.summarise(points, stops).distanceM,
+      alert: T.inSchedule(now, schedule) ? D.currentAlert(events) : null,
+      todayNoLocationS: log.summary.noLocationS,
+      todayOfflineS: log.summary.offlineS,
     });
   }
   res.json(out);
+}));
+
+// ---- device log ------------------------------------------------------------
+
+router.get('/device-log', manager, wrap(async (req, res) => {
+  const agentId = Number(req.query.agentId);
+  if (!Number.isInteger(agentId) || agentId < 1) return fail(res, 400, 'Choose an agent.', { agentId: 'Choose an agent.' });
+  const day = req.query.date ? String(req.query.date) : today();
+  if (parseIso(day) === null) return fail(res, 400, 'Date must be YYYY-MM-DD.', { date: 'Date must be YYYY-MM-DD.' });
+  const schedule = await T.readSchedule(prisma);
+  const events = await prisma.deviceEvent.findMany({
+    where: { agentId, at: { gte: new Date(dayStart(day).getTime() - LOOKBACK_MS), lt: dayEnd(day) } },
+    orderBy: { at: 'asc' }, select: { type: true, at: true, detail: true },
+  });
+  const win = D.workWindow(day, schedule);
+  res.json({
+    agentId, date: day,
+    workStart: win ? new Date(win[0]) : null, workEnd: win ? new Date(win[1]) : null,
+    ...D.dayLog(events, { day, schedule, now: new Date() }),
+  });
 }));
 
 // ---- track -----------------------------------------------------------------

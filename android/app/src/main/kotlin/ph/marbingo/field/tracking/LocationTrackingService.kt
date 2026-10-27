@@ -7,11 +7,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
@@ -53,6 +59,25 @@ class LocationTrackingService : Service() {
     private var client: FusedLocationProviderClient? = null
     private var loop: Job? = null
     private var tracking = false
+    private val monitor get() = graph.monitor
+
+    // Dynamic only: ACTION_SHUTDOWN is sent to registered receivers only, and the others can't be declared in the manifest.
+    private val deviceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val pending = goAsync()
+            graph.appScope.launch {
+                try {
+                    if (intent.action == Intent.ACTION_SHUTDOWN) monitor.onShutdown() else monitor.checkStates()
+                } finally { pending.finish() }
+            }
+        }
+    }
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = recheck()
+        override fun onLost(network: Network) = recheck()
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = recheck()
+    }
+    private var watching = false
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) { result.locations.forEach(::record) }
@@ -102,7 +127,33 @@ class LocationTrackingService : Service() {
             stopSelf()
             return
         }
-        loop = scope.launch { runLoop() }
+        loop = scope.launch {
+            monitor.onServiceStart()
+            runLoop()
+        }
+        watchDevice()
+    }
+
+    private fun recheck() { scope.launch { monitor.checkStates() } }
+
+    private fun watchDevice() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SHUTDOWN)
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction(LocationManager.PROVIDERS_CHANGED_ACTION)
+        }
+        try {
+            ContextCompat.registerReceiver(this, deviceReceiver, filter, ContextCompat.RECEIVER_EXPORTED) // system broadcasts
+            getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(networkCallback)
+            watching = true
+        } catch (_: Exception) { }
+    }
+
+    private fun unwatchDevice() {
+        if (!watching) return
+        watching = false
+        try { unregisterReceiver(deviceReceiver) } catch (_: Exception) { }
+        try { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback) } catch (_: Exception) { }
     }
 
     /** Every 30 s: end of hours? heartbeat fix while standing still? upload every ~2 min. */
@@ -114,6 +165,7 @@ class LocationTrackingService : Service() {
             val meta = graph.db.trackingMeta().get()
             val signedIn = !graph.tokenStore.accessToken.isNullOrBlank() || !graph.tokenStore.refreshToken.isNullOrBlank()
             if (!signedIn || !meta.schedule().isInHours(now)) { stopSelf(); return }
+            monitor.onHeartbeat()
 
             // With a 25 m minimum distance a stationary agent produces no fixes; ask for one so the map doesn't show "signal lost" during a long visit.
             if (now - (meta?.lastFixAt ?: 0L) > HEARTBEAT_MS) requestOneFix()
@@ -141,9 +193,12 @@ class LocationTrackingService : Service() {
     }
 
     private fun record(loc: Location) {
+        val mock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) loc.isMock else @Suppress("DEPRECATION") loc.isFromMockProvider
+        if (mock) { scope.launch { monitor.onFix(mock = true) }; return } // a fake-GPS position is logged, never stored
         if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) return // the server rejects these anyway
         val battery = battery()
         scope.launch {
+            monitor.onFix(mock = false)
             val point = LocationPointEntity(
                 recordedAt = loc.time,
                 lat = loc.latitude, lng = loc.longitude,
@@ -169,11 +224,16 @@ class LocationTrackingService : Service() {
     override fun onDestroy() {
         loop?.cancel()
         try { client?.removeLocationUpdates(callback) } catch (_: Exception) { }
+        unwatchDevice()
         scope.cancel()
+        val wasTracking = tracking
         running.value = false
         // Final upload outlives this service.
         val g = graph
-        g.appScope.launch { withTimeoutOrNull(15_000) { g.uploader.uploadPending() } }
+        g.appScope.launch {
+            if (wasTracking) g.monitor.onServiceStop()
+            withTimeoutOrNull(15_000) { g.uploader.uploadPending() }
+        }
         super.onDestroy()
     }
 

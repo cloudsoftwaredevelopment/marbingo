@@ -27,6 +27,7 @@ interface MarbingoApi {
 
     @GET("api/settings/tracking-schedule") suspend fun trackingSchedule(): TrackingScheduleDto
     @POST("api/tracking/points") suspend fun postTrackingPoints(@Body body: TrackingPointsRequest): TrackingPointsResponse
+    @POST("api/tracking/events") suspend fun postDeviceEvents(@Body body: DeviceEventsRequest): TrackingPointsResponse
     @POST("api/tracking/consent") suspend fun giveTrackingConsent(): ConsentResponse
 
     @POST("api/orders/{id}/cancel") suspend fun cancelOrder(@Path("id") id: Int, @Body body: CancelRequest): OrderResponse

@@ -160,6 +160,12 @@ data class TrackingPointDto(
 
 data class TrackingPointsRequest(val points: List<TrackingPointDto>)
 data class TrackingPointsResponse(val accepted: Int = 0, val duplicates: Int = 0, val rejected: Int = 0)
+/** Tablet state change for the device log (power, app, mobile data, GPS, …); [type] values are listed in docs/tracking-api.md. */
+data class DeviceEventDto(val type: String, val at: String, val detail: DeviceEventDetailDto? = null)
+data class DeviceEventDetailDto(val battery: Int? = null, val estimated: Boolean? = null, val shiftMs: Long? = null)
+/** [sentAt] is the device clock at send time: the server notes a big difference from its own. */
+data class DeviceEventsRequest(val events: List<DeviceEventDto>, val sentAt: String)
+
 data class ConsentResponse(val trackingConsentAt: String? = null)
 
 data class OrderLineInput(val itemId: Int, val qty: Int)

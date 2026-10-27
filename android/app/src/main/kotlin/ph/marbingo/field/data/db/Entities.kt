@@ -131,6 +131,23 @@ data class LocationPointEntity(
     val uploaded: Boolean = false,
 )
 
+/** Device-log events (power, app, mobile data, GPS, …) waiting to be uploaded (docs/tracking-api.md "Device log"). */
+@Entity(
+    tableName = "device_events",
+    indices = [Index(value = ["type", "at"], unique = true), Index("uploaded")],
+)
+data class DeviceEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: String,
+    val at: Long, // epoch millis
+    val battery: Int? = null,
+    /** The time is the last heartbeat before an unclean power-off, not the moment itself. */
+    val estimated: Boolean = false,
+    /** clock_changed: how far the wall clock jumped. */
+    val shiftMs: Long? = null,
+    val uploaded: Boolean = false,
+)
+
 /** Single row (id = 1): the work schedule, the consent state and tracking diagnostics. */
 @Entity(tableName = "tracking_meta")
 data class TrackingMetaEntity(

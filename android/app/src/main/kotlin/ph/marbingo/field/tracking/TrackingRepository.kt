@@ -48,6 +48,7 @@ class TrackingRepositoryImpl(
     private val alarms: AlarmScheduler,
     private val now: () -> Long = System::currentTimeMillis,
     private val ticker: Flow<Unit> = flow { while (true) { emit(Unit); delay(30_000) } },
+    private val monitor: DeviceMonitor? = null,
 ) : TrackingRepository {
 
     private val permState = MutableStateFlow(permissions.snapshot())
@@ -111,6 +112,8 @@ class TrackingRepositoryImpl(
         val p = permState.value
         val n = now()
         val inHours = schedule.isInHours(n)
+        // On duty: log a revoked permission or GPS switched off even when the service can't run.
+        if (inHours && meta?.consentAt != null) monitor?.checkStates()
         if (inHours && meta?.consentAt != null && p.fine && p.background) {
             service.start()?.let { db.trackingMeta().saveError(it) }
         } else {

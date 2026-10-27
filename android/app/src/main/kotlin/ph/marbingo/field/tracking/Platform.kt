@@ -7,6 +7,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import android.os.SystemClock
+import android.provider.Settings
+import android.telephony.TelephonyManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
@@ -41,6 +47,67 @@ class AndroidPermissionChecker(private val context: Context) : PermissionChecker
             gpsEnabled = LocationManagerCompat.isLocationEnabled(lm),
         )
     }
+}
+
+class AndroidDeviceProbe(private val context: Context) : DeviceProbe {
+    private val cr get() = context.contentResolver
+    private fun global(name: String): Int? = try { Settings.Global.getInt(cr, name) } catch (_: Exception) { null }
+
+    override fun snapshot(): DeviceSnapshot {
+        val perms = AndroidPermissionChecker(context).snapshot()
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val battery = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
+        return DeviceSnapshot(
+            wallMs = System.currentTimeMillis(),
+            elapsedMs = SystemClock.elapsedRealtime(),
+            bootCount = global(Settings.Global.BOOT_COUNT),
+            battery = battery,
+            mobileDataOn = mobileDataOn(),
+            airplane = global(Settings.Global.AIRPLANE_MODE_ON) == 1,
+            online = online(),
+            gpsOn = perms.gpsEnabled,
+            locationAllowed = perms.fine && perms.background,
+            autoTime = global(Settings.Global.AUTO_TIME)?.let { it == 1 },
+        )
+    }
+
+    /** null without a ready SIM (Wi-Fi-only tablet): mobile data doesn't apply. */
+    @SuppressLint("MissingPermission") // ACCESS_NETWORK_STATE is declared; any SecurityException falls back to the setting
+    private fun mobileDataOn(): Boolean? {
+        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return null
+        if (tm.simState != TelephonyManager.SIM_STATE_READY) return null
+        return try { tm.isDataEnabled } catch (_: Exception) { global("mobile_data")?.let { it == 1 } }
+    }
+
+    private fun online(): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+}
+
+/** [MonitorState] in its own SharedPreferences file; commit() so a heartbeat isn't lost to a sudden power-off. */
+class PrefsMonitorStore(context: Context) : MonitorStore {
+    private val prefs = context.applicationContext.getSharedPreferences("device_monitor", Context.MODE_PRIVATE)
+    private fun long(k: String) = if (prefs.contains(k)) prefs.getLong(k, 0) else null
+    private fun int(k: String) = if (prefs.contains(k)) prefs.getInt(k, 0) else null
+
+    override fun read() = MonitorState(
+        beatAt = long("beatAt"), beatElapsed = long("beatElapsed"), bootCount = int("bootCount"), battery = int("battery"),
+        running = prefs.getBoolean("running", false), shutdownAt = long("shutdownAt"),
+        bad = prefs.getStringSet("bad", emptySet())!!.toSet(),
+    )
+
+    override fun write(s: MonitorState) {
+        val e = prefs.edit()
+        fun put(k: String, v: Long?) { if (v == null) e.remove(k) else e.putLong(k, v) }
+        fun put(k: String, v: Int?) { if (v == null) e.remove(k) else e.putInt(k, v) }
+        put("beatAt", s.beatAt); put("beatElapsed", s.beatElapsed); put("bootCount", s.bootCount); put("battery", s.battery)
+        put("shutdownAt", s.shutdownAt)
+        e.putBoolean("running", s.running).putStringSet("bad", s.bad).commit()
+    }
+
+    override fun clear() { prefs.edit().clear().commit() }
 }
 
 class AndroidServiceController(private val context: Context) : ServiceController {
