@@ -79,7 +79,7 @@ fun SignInScreen(vm: SignInViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             UpdateBannerHost()
-            ShopMark("MB", 72.dp)
+            BrandLogo(72.dp)
             Text("Marbingo Field", style = MaterialTheme.typography.headlineMedium)
             Text("Sign in to take orders at your stores.", style = MaterialTheme.typography.bodyMedium, color = Mb.Muted)
             Spacer(Modifier.height(4.dp))

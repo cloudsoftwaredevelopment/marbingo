@@ -243,6 +243,21 @@ fun ShopMark(mark: String, size: androidx.compose.ui.unit.Dp = 56.dp) {
     }
 }
 
+/** The official Marbingo logo in a white rounded tile. Used on the sign-in and update screens. */
+@Composable
+fun BrandLogo(size: androidx.compose.ui.unit.Dp = 72.dp) {
+    Box(
+        Modifier.size(size).background(Color.White, MbShapes.Control),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(ph.marbingo.field.R.drawable.brand_logo),
+            contentDescription = "Marbingo",
+            modifier = Modifier.size(size * 0.82f),
+        )
+    }
+}
+
 @Composable
 fun Dot(color: Color, size: androidx.compose.ui.unit.Dp = 10.dp) {
     Box(Modifier.size(size).background(color, CircleShape))

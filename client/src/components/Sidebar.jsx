@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { can } from '../lib/roles';
 import { ROLE_LABELS, initials, pesoCompact } from '../lib/format';
 import '../styles/shell.css';
+import BrandMark from './BrandMark';
 
 const D = "'Bricolage Grotesque', system-ui, sans-serif";
 const M = "'IBM Plex Mono', ui-monospace, monospace";
@@ -137,7 +138,7 @@ export default function Sidebar({ onClose }) {
             <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         )}
-        <div aria-hidden="true" style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: '#E3EEE7', color: '#1E5B43', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: D, fontWeight: 700, fontSize: 17 }}>{shopInitials(shop, settings.shopMark)}</div>
+        <BrandMark size={40} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ fontFamily: D, fontWeight: 700, fontSize: 18, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{shop}</span>
           <span style={{ fontSize: 12, color: '#A9A497' }}>Dry goods · Back office</span>

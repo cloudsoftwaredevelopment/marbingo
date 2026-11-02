@@ -102,7 +102,7 @@ fun UpdateRequiredScreen(offer: UpdateState.Available, state: UpdateState, onUpd
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            ShopMark("MB", 72.dp)
+            BrandLogo(72.dp)
             Text("Update required", style = MaterialTheme.typography.headlineMedium)
             Text(
                 "This version of Marbingo Field is too old to keep working. Install v${offer.info.versionName} to continue.",
